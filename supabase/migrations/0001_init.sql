@@ -1,4 +1,9 @@
 -- NFL Pick'em -- initial schema.
+--
+-- Safe to run more than once: every object is created only if it is missing,
+-- so re-running after a partial failure fills in the gaps instead of erroring
+-- on the tables that already exist.
+--
 -- All access goes through the Next.js server using the service role key, so
 -- RLS is enabled with no permissive policies: anon/authenticated clients get
 -- nothing, the service role bypasses RLS entirely.
@@ -7,7 +12,7 @@ create extension if not exists pgcrypto;
 
 -- ---------------------------------------------------------------- groups
 
-create table groups (
+create table if not exists groups (
   id            uuid primary key default gen_random_uuid(),
   name          text not null check (length(trim(name)) between 1 and 60),
   join_code     text not null unique check (join_code ~ '^[A-Z0-9]{6,10}$'),
@@ -19,7 +24,7 @@ create table groups (
 -- A row is a membership: one person in one group. The same person joining a
 -- second pool gets a second row. The session cookie carries the ids.
 
-create table users (
+create table if not exists users (
   id         uuid primary key default gen_random_uuid(),
   group_id   uuid not null references groups(id) on delete cascade,
   username   text not null check (length(trim(username)) between 2 and 24),
@@ -28,18 +33,26 @@ create table users (
   created_at timestamptz not null default now()
 );
 
-create unique index users_group_username_key on users (group_id, lower(username));
-create index users_group_idx on users (group_id);
+create unique index if not exists users_group_username_key on users (group_id, lower(username));
+create index if not exists users_group_idx on users (group_id);
 
-alter table groups
-  add constraint groups_admin_fk
-  foreign key (admin_user_id) references users(id) on delete set null;
+-- Postgres has no "add constraint if not exists", so check the catalog first.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'groups_admin_fk'
+  ) then
+    alter table groups
+      add constraint groups_admin_fk
+      foreign key (admin_user_id) references users(id) on delete set null;
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------- weeks
 -- Weeks and games are league-wide, not per-group: every pool picks the same
 -- NFL slate, and a spread frozen at kickoff is a fact about the game.
 
-create table weeks (
+create table if not exists weeks (
   id          uuid primary key default gen_random_uuid(),
   season_year int not null check (season_year between 2000 and 2100),
   week_number int not null check (week_number between 1 and 22),
@@ -51,7 +64,7 @@ create table weeks (
 
 -- ---------------------------------------------------------------- games
 
-create table games (
+create table if not exists games (
   id                uuid primary key default gen_random_uuid(),
   week_id           uuid not null references weeks(id) on delete cascade,
   home_team         text not null,
@@ -78,12 +91,12 @@ create table games (
   check (home_team <> away_team)
 );
 
-create index games_week_idx on games (week_id, kickoff_time);
-create index games_kickoff_idx on games (kickoff_time);
+create index if not exists games_week_idx on games (week_id, kickoff_time);
+create index if not exists games_kickoff_idx on games (kickoff_time);
 
 -- ---------------------------------------------------------------- picks
 
-create table picks (
+create table if not exists picks (
   id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references users(id) on delete cascade,
   game_id        uuid not null references games(id) on delete cascade,
@@ -99,13 +112,13 @@ create table picks (
   unique (user_id, game_id)
 );
 
-create unique index picks_one_lock_per_week on picks (user_id, week_id) where is_lock;
-create index picks_game_idx on picks (game_id);
-create index picks_week_idx on picks (week_id, user_id);
+create unique index if not exists picks_one_lock_per_week on picks (user_id, week_id) where is_lock;
+create index if not exists picks_game_idx on picks (game_id);
+create index if not exists picks_week_idx on picks (week_id, user_id);
 
 -- ------------------------------------------------------- point adjustments
 
-create table point_adjustments (
+create table if not exists point_adjustments (
   id         uuid primary key default gen_random_uuid(),
   group_id   uuid not null references groups(id) on delete cascade,
   user_id    uuid not null references users(id) on delete cascade,
@@ -116,11 +129,11 @@ create table point_adjustments (
   created_at timestamptz not null default now()
 );
 
-create index point_adjustments_user_idx on point_adjustments (user_id);
+create index if not exists point_adjustments_user_idx on point_adjustments (user_id);
 
 -- ------------------------------------------------------------ audit log
 
-create table admin_actions (
+create table if not exists admin_actions (
   id             uuid primary key default gen_random_uuid(),
   group_id       uuid not null references groups(id) on delete cascade,
   actor_user_id  uuid references users(id) on delete set null,
@@ -133,7 +146,7 @@ create table admin_actions (
   created_at     timestamptz not null default now()
 );
 
-create index admin_actions_group_idx on admin_actions (group_id, created_at desc);
+create index if not exists admin_actions_group_idx on admin_actions (group_id, created_at desc);
 
 -- ---------------------------------------------------------------- lockdown
 

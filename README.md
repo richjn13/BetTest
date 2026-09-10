@@ -99,6 +99,17 @@ To confirm, open **Table Editor** in the sidebar. You should see seven tables:
 `groups`, `users`, `weeks`, `games`, `picks`, `point_adjustments`, and
 `admin_actions`.
 
+**Running this twice is safe.** Every statement creates its object only if it is
+missing, so a second run does nothing rather than failing. If you get
+`relation "groups" already exists`, you are on an older copy of the file — pull
+the latest and run it again.
+
+If the seven tables are not all there, the first run stopped partway. Start
+clean: run `supabase/reset.sql` in the same SQL Editor, which drops all seven
+tables, then run `0001_init.sql` again. **`reset.sql` deletes everything in the
+database and cannot be undone**, so only use it on a project with nothing in it
+you want to keep.
+
 ## 5. Copy your two Supabase credentials
 
 In the same project, open **Project Settings** (the gear icon), then the **API**
@@ -314,6 +325,8 @@ Freezing and grading still run, because they only need data already stored.
 | `Missing required environment variable SUPABASE_URL` | `.env.local` is missing, misnamed, or the server was not restarted after you edited it. The file must be `.env.local`, not `.env.local.txt`, in the project root. |
 | The join screen loads but creating a group hangs or errors | Usually the `anon` key was copied instead of `service_role`. Recheck step 5. |
 | `relation "groups" does not exist` | The SQL from step 4 did not run. Open Table Editor in Supabase and confirm the seven tables are there. |
+| `relation "groups" already exists` when running the SQL | You are on an older copy of `0001_init.sql`. The current one is safe to re-run. Pull the latest and run it again. |
+| The SQL ran but only some tables appeared | The run stopped partway. Run `supabase/reset.sql`, then `0001_init.sql` again. Reset deletes everything, so only do this on a database with nothing worth keeping. |
 | Picks tab says "No games yet" | Expected on a fresh database. Add a game by hand (step 8) or run the odds refresh (step 9). |
 | A game will not accept a pick | Its kickoff time has passed. That is the rule working. Use Admin → Picks to edit a pick after kickoff. |
 | Odds refresh says `401` or `Usage quota` | The API key is wrong, or the monthly quota is spent. See the quota table above. |
@@ -351,7 +364,7 @@ src/lib/          scoring, grading, odds parsing, session, database access
 src/app/join      create a group, join one, or sign in
 src/app/g/[id]    picks board, leaderboard, admin panel
 src/app/api/cron  the scheduled refresh endpoint
-supabase/         the schema
+supabase/         the schema, plus a destructive reset script
 ```
 
 The rules worth trusting are pure functions with tests: `scoring.ts` for
