@@ -168,10 +168,10 @@ export async function refreshOdds(): Promise<SyncResult> {
     const existing = unwrap(
       await db()
         .from("games")
-        .select("id, spread_frozen_at")
+        .select("id, spread_frozen_at, spread_locked_at")
         .eq("odds_api_event_id", event.id)
         .maybeSingle(),
-    ) as { id: string; spread_frozen_at: string | null } | null;
+    ) as { id: string; spread_frozen_at: string | null; spread_locked_at: string | null } | null;
 
     if (!existing) {
       const { seasonYear, weekNumber } = weekForKickoff(kickoff);
@@ -194,8 +194,8 @@ export async function refreshOdds(): Promise<SyncResult> {
       continue;
     }
 
-    // Kickoff has passed and the line is frozen: never touch it again.
-    if (existing.spread_frozen_at || !line) continue;
+    // Frozen at kickoff, or locked by a deliberate pull: leave it alone.
+    if (existing.spread_frozen_at || existing.spread_locked_at || !line) continue;
 
     const update = await db()
       .from("games")
@@ -207,6 +207,7 @@ export async function refreshOdds(): Promise<SyncResult> {
       })
       .eq("id", existing.id)
       .is("spread_frozen_at", null)
+      .is("spread_locked_at", null)
       .select("id");
     if (!update.error) result.spreadsUpdated += 1;
   }

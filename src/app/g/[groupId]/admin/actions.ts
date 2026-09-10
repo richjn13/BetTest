@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { db, unwrap } from "@/lib/db";
 import { gradeResolvedGames } from "@/lib/grading";
+import { pullLinesWithClaude } from "@/lib/claude-odds";
 import { runRefresh, summarize } from "@/lib/refresh";
 import {
   AppError,
   addPointAdjustment,
+  applyLockedLines,
   adminSetPick,
   createGame,
   deleteGame,
@@ -313,6 +315,63 @@ export async function adjustPointsAction(
       details: { username, points, weekId: weekId || null },
     });
     return `Adjusted ${username} by ${points > 0 ? "+" : ""}${points}.`;
+  });
+}
+
+// ------------------------------------------------------------------- claude
+
+/**
+ * Asks Claude to search for the week's lines, then writes what survives
+ * validation. Every number is locked at the moment of the pull: the odds feed
+ * will not touch it, and only another deliberate pull can replace it.
+ */
+export async function pullLinesAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const seasonYear = optionalNumber(form, "seasonYear");
+  const weekNumber = optionalNumber(form, "weekNumber");
+
+  return run(groupId, async (actor) => {
+    if (!seasonYear || !weekNumber) throw new AppError("Pick a season and week.");
+    if (weekNumber < 1 || weekNumber > 22) throw new AppError("Week must be between 1 and 22.");
+
+    const pulled = await pullLinesWithClaude(seasonYear, weekNumber);
+    if (!pulled.ok) {
+      throw new AppError(pulled.error ?? "The pull came back empty.");
+    }
+
+    const week = await ensureWeek(seasonYear, weekNumber);
+    const source = pulled.source ? `claude:${pulled.source}` : "claude";
+    const counts = await applyLockedLines(week.id, pulled.games, source);
+
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: "pull_lines",
+      note: `Lines pulled and locked for ${week.label}.`,
+      details: {
+        source: pulled.source,
+        accepted: pulled.games.length,
+        rejected: pulled.rejected,
+        ...counts,
+      },
+    });
+
+    const parts = [
+      `${counts.inserted} added, ${counts.updated} updated`,
+      counts.skippedFrozen > 0 ? `${counts.skippedFrozen} already frozen and left alone` : null,
+      pulled.source ? `from ${pulled.source}` : null,
+    ].filter(Boolean);
+
+    const rejected =
+      pulled.rejected.length > 0
+        ? ` Dropped ${pulled.rejected.length}: ${pulled.rejected.join("; ")}.`
+        : "";
+
+    return `${parts.join(", ")}. Check the slate below before anyone picks.${rejected}`;
   });
 }
 

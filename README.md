@@ -83,6 +83,10 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
+**There are two files to run, in order:** `supabase/migrations/0001_init.sql`
+then `supabase/migrations/0002_locked_lines.sql`. Do the first one now and come
+back for the second.
+
 **First, copy the SQL.** Open this file on GitHub:
 
 `supabase/migrations/0001_init.sql`
@@ -106,7 +110,10 @@ To confirm, open **Table Editor** in the sidebar. You should see seven tables:
 `groups`, `users`, `weeks`, `games`, `picks`, `point_adjustments`, and
 `admin_actions`.
 
-**Running this twice is safe.** Every statement creates its object only if it is
+Now repeat the same copy-and-run for `supabase/migrations/0002_locked_lines.sql`,
+which adds one column used by the Claude line pull.
+
+**Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
 
 If the seven tables are not all there, the first run stopped partway. Start
@@ -200,6 +207,7 @@ always means what is live.
 | `SUPABASE_SERVICE_ROLE_KEY` | The `service_role` key from step 4 |
 | `SESSION_SECRET` | `session_secret` from step 3 |
 | `CRON_SECRET` | `cron_secret` from step 3 |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key, from console.anthropic.com |
 | `ODDS_API_KEY` | Leave the value empty for now |
 | `ODDS_API_BOOKMAKERS` | Type `draftkings,fanduel`, or skip this one entirely |
 
@@ -293,6 +301,40 @@ live spreads.
 If it reports a problem instead, the message names the cause. Nothing is damaged
 either way: a failed fetch changes no stored data, so whatever spreads you
 already had stay exactly as they were.
+
+### Pulling lines with Claude
+
+**Admin → Lines → Pull lines with Claude** is the on-demand path. Pick a season
+and week, press the button, and Claude searches for that week's spreads and
+writes them in. It takes a minute or so, and needs `ANTHROPIC_API_KEY` set.
+
+**The pull locks each line.** A locked line is left alone by the odds feed, so
+nothing overwrites it behind your back. Pull the same week again whenever you
+like and the numbers are replaced. There are three states a spread moves
+through, in order of permanence:
+
+| State | What it means |
+| --- | --- |
+| Loose | The odds feed refreshes it freely, right up to kickoff |
+| Locked | A pull fixed it. The feed skips it; another pull may replace it |
+| Frozen | Kickoff passed. Nothing changes it, ever |
+
+Freezing still wins. Once a game kicks off, its line is the number picks are
+graded against, and no pull can move it. Re-pulling a week that has already
+started updates only the games still to come, and says how many it left alone.
+
+**Check the slate after a pull.** These numbers come from a model reading a
+betting page, not from a typed field in a sportsbook's API, and the honest
+failure mode is a misread half point that then freezes and mis-scores everyone.
+The app rejects what it can catch: a name that is not an NFL team, a spread that
+is not a half point, one large enough to be a moneyline misread as a spread, a
+kickoff in the wrong week, a duplicated matchup. Anything dropped is named in
+the result, and the pull is written to the audit log with its source. What it
+cannot catch is a plausible number that happens to be wrong, which is why the
+slate list underneath is worth a glance before anyone picks.
+
+Cost is small. One pull is a search plus a page or two of reasoning, so a weekly
+pull runs on the order of a dollar or two a month.
 
 ### Which sportsbook the spreads come from
 
@@ -479,6 +521,8 @@ the rows below are things it will find for you.
 | `This deployment is missing ...` on the join form | Exactly what it says. Those variables are unset in Vercel, or have a stray space. Nothing was saved. Fix them, redeploy, try again. |
 | The app loads but creating a group hangs or errors | Almost always the `anon` key was pasted instead of `service_role`. `/setup` decodes the key and tells you which one you pasted. |
 | The join screen works, then everything breaks after you create a group | Usually a missing `SESSION_SECRET`. The join screen does not read it, but every page does once you have a session cookie. `/setup` will show it. |
+| Pull lines with Claude says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
+| The pull times out | Vercel's Hobby plan caps a function at 60 seconds and a search-backed pull can exceed that. Pull a single week at a time, or move to Pro, or use the paste-free fallback of adding games by hand. |
 | `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |
 | `relation "groups" does not exist` | The SQL from step 2 did not run. Open Supabase's Table Editor and confirm the seven tables are there. |
 | The SQL ran but only some tables appeared | The run stopped partway. Run `supabase/reset.sql`, then `0001_init.sql` again. Reset deletes everything, so only on a database with nothing worth keeping. |

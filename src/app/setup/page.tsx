@@ -241,6 +241,7 @@ export default async function SetupPage() {
     checkServiceRoleKey(),
     checkPresence("SESSION_SECRET"),
     checkPresence("CRON_SECRET"),
+    checkPresence("ANTHROPIC_API_KEY", true),
   ];
 
   const [database, oddsFeed] = await Promise.all([checkDatabase(), checkOddsFeed()]);

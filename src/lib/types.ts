@@ -36,6 +36,7 @@ export type Game = {
   spread_source: string | null;
   spread_updated_at: string | null;
   spread_frozen_at: string | null;
+  spread_locked_at: string | null;
   frozen_home_spread: number | null;
   final_home_score: number | null;
   final_away_score: number | null;

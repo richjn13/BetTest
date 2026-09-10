@@ -23,6 +23,7 @@ import {
   deleteGameAction,
   editPickAction,
   overrideGameAction,
+  pullLinesAction,
   regenerateCodeAction,
   removeUserAction,
   syncOddsAction,
@@ -48,6 +49,10 @@ export function AdminPanel(props: Props) {
     <div className="space-y-4">
       <Section title="Group">
         <GroupSection group={group} />
+      </Section>
+
+      <Section title="Lines">
+        <PullSection groupId={group.id} week={week} />
       </Section>
 
       <Section title="Odds feed">
@@ -174,6 +179,56 @@ function GroupSection({ group }: { group: Group }) {
   );
 }
 
+function PullSection({ groupId, week }: { groupId: string; week: Week | null }) {
+  const [state, action] = useFormState(pullLinesAction, IDLE);
+  const defaultYear = week?.season_year ?? new Date().getUTCFullYear();
+  const defaultWeek = week?.week_number ?? 1;
+
+  return (
+    <form action={action} className="space-y-3">
+      <input type="hidden" name="groupId" value={groupId} />
+      <Feedback state={state} />
+      <p className="text-sm text-muted">
+        Claude searches for the week&apos;s spreads and writes what it finds. Each
+        line is locked at the moment of the pull: the odds feed leaves it alone,
+        and only another pull replaces it.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label">Season</label>
+          <input
+            name="seasonYear"
+            type="number"
+            defaultValue={defaultYear}
+            required
+            className="field"
+          />
+        </div>
+        <div>
+          <label className="label">Week (19-22 = playoffs)</label>
+          <input
+            name="weekNumber"
+            type="number"
+            min={1}
+            max={22}
+            defaultValue={defaultWeek}
+            required
+            className="field"
+          />
+        </div>
+      </div>
+      <SubmitButton className="btn" pendingLabel="Searching, this takes a minute...">
+        Pull lines with Claude
+      </SubmitButton>
+      <p className="text-xs text-muted">
+        These numbers come from a model reading a betting page, so check the
+        slate below before anyone picks. Once a game kicks off its line is final
+        and no pull can change it.
+      </p>
+    </form>
+  );
+}
+
 function OddsSection({ groupId }: { groupId: string }) {
   const [state, action] = useFormState(syncOddsAction, IDLE);
   return (
@@ -289,7 +344,11 @@ function GamesSection({
                   <span className="ml-2 text-muted">
                     {formatKickoff(game.kickoff_time)} ·{" "}
                     {spreadForSide(effectiveSpread(game), "home")}
-                    {game.spread_frozen_at ? " (frozen)" : ""} · {game.status}
+                    {game.spread_frozen_at
+                      ? " (frozen)"
+                      : game.spread_locked_at
+                        ? " (locked)"
+                        : ""} · {game.status}
                     {game.score_overridden_at ? " · manual" : ""}
                   </span>
                 </div>

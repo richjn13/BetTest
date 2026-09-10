@@ -6,7 +6,7 @@ import type { Game, Side } from "./types";
 const GAME_COLUMNS =
   "id, week_id, home_team, away_team, kickoff_time, home_spread, spread_source, " +
   "spread_updated_at, spread_frozen_at, frozen_home_spread, final_home_score, " +
-  "final_away_score, score_overridden_at, status, odds_api_event_id";
+  "final_away_score, score_overridden_at, status, odds_api_event_id, spread_locked_at";
 
 /**
  * Freezes the line on every game whose kickoff has passed. The frozen value is

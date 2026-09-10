@@ -251,7 +251,7 @@ export async function getCurrentWeek(): Promise<Week | null> {
 const GAME_COLUMNS =
   "id, week_id, home_team, away_team, kickoff_time, home_spread, spread_source, " +
   "spread_updated_at, spread_frozen_at, frozen_home_spread, final_home_score, " +
-  "final_away_score, score_overridden_at, status, odds_api_event_id";
+  "final_away_score, score_overridden_at, status, odds_api_event_id, spread_locked_at";
 
 export async function getGamesForWeek(weekId: string): Promise<Game[]> {
   const result = await db()
@@ -291,6 +291,73 @@ export async function createGame(input: {
       .single(),
   );
   return result as Game;
+}
+
+/**
+ * Writes a pulled slate into a week, locking each line.
+ *
+ * A locked line is skipped by the odds feed but can be replaced by a later
+ * deliberate pull, so re-pulling a week updates the numbers rather than
+ * duplicating the games. Kickoff still freezes a line permanently, and a
+ * frozen game is left alone here -- re-pulling cannot move a number that
+ * picks were already graded against.
+ */
+export async function applyLockedLines(
+  weekId: string,
+  games: { awayTeam: string; homeTeam: string; kickoffIso: string; homeSpread: number }[],
+  source: string,
+): Promise<{ inserted: number; updated: number; skippedFrozen: number }> {
+  const existing = await getGamesForWeek(weekId);
+  const byMatchup = new Map(
+    existing.map((game) => [`${game.away_team}@${game.home_team}`, game]),
+  );
+
+  const now = new Date().toISOString();
+  const counts = { inserted: 0, updated: 0, skippedFrozen: 0 };
+
+  for (const game of games) {
+    const match = byMatchup.get(`${game.awayTeam}@${game.homeTeam}`);
+
+    if (match) {
+      if (match.spread_frozen_at) {
+        counts.skippedFrozen += 1;
+        continue;
+      }
+      unwrap(
+        await db()
+          .from("games")
+          .update({
+            home_spread: game.homeSpread,
+            kickoff_time: game.kickoffIso,
+            spread_source: source,
+            spread_updated_at: now,
+            spread_locked_at: now,
+          })
+          .eq("id", match.id)
+          .is("spread_frozen_at", null)
+          .select("id"),
+      );
+      counts.updated += 1;
+      continue;
+    }
+
+    const insert = await db()
+      .from("games")
+      .insert({
+        week_id: weekId,
+        home_team: game.homeTeam,
+        away_team: game.awayTeam,
+        kickoff_time: game.kickoffIso,
+        home_spread: game.homeSpread,
+        spread_source: source,
+        spread_updated_at: now,
+        spread_locked_at: now,
+      })
+      .select("id");
+    if (!insert.error) counts.inserted += 1;
+  }
+
+  return counts;
 }
 
 export async function deleteGame(gameId: string): Promise<void> {
