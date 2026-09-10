@@ -4,6 +4,10 @@ A private, friends-only pick'em pool. Members join with a code, pick every game
 against the live spread, designate one lock a week worth double, and follow a
 season-long leaderboard.
 
+**You can set this up entirely from an iPad, in Safari, with no terminal.** The
+guide below is written for that. If you are on a laptop and want a local dev
+server, skip to *Running it on a computer* at the end.
+
 ## How the pool works
 
 - **Picking** — pick a side against the spread in every game on the slate.
@@ -44,53 +48,56 @@ actions using the service role key, which never reaches the browser.
 
 ---
 
-# Get it running on your own machine
+# Setting it up from an iPad
 
-Roughly 20 minutes, most of it waiting on a Supabase project to spin up. You do
-**not** need the odds feed to get started — step 8 walks through entering a game
-by hand, which is enough to see picks, locking and scoring work end to end.
+Everything happens in Safari across four websites. Nothing is installed, no code
+runs on the iPad, and the app itself is hosted by Vercel.
 
-## Before you start
+| Site | What it does | Account needed |
+| --- | --- | --- |
+| [supabase.com](https://supabase.com) | The database | Free |
+| [github.com](https://github.com) | Holds the code | You already have one |
+| [vercel.com](https://vercel.com) | Runs the app | Free, sign in with GitHub |
+| [the-odds-api.com](https://the-odds-api.com) | NFL spreads and scores | Free |
 
-- **Node.js 20 or newer.** Check with `node -v`. If that errors or shows an
-  older version, install from [nodejs.org](https://nodejs.org).
-- **A [Supabase](https://supabase.com) account.** Free tier is fine.
-- **A [The Odds API](https://the-odds-api.com) key.** Free, and only needed from
-  step 9 onward. Skip it for now if you want.
+Budget about 30 minutes. Two tips before you start:
 
-## 1. Get the code
+- **Open each site in its own Safari tab** and leave them open. You will be
+  copying values between Supabase and Vercel and it is much easier than
+  navigating back and forth.
+- **If a dashboard looks cramped or a button will not tap**, use the **aA** menu
+  in Safari's address bar and choose **Request Desktop Website**. Supabase's SQL
+  editor in particular behaves better that way.
 
-```bash
-git clone https://github.com/richjn13/BetTest.git
-cd BetTest
-git checkout claude/nfl-pickem-build-spec-jnc1yo
-```
+You do not need the odds feed to finish setup. Step 8 walks through entering a
+game by hand, which is enough to see picks, locking and scoring work end to end.
 
-## 2. Install the dependencies
+## 1. Create the Supabase project
 
-```bash
-npm install
-```
+1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) and sign in.
+2. Tap **New project**.
+3. Name it anything. Pick a region near you.
+4. Set a database password. You will not need it again for this app, but save it
+   in your Notes or password manager anyway.
+5. Tap **Create new project**, then wait. It takes 1-2 minutes.
 
-Takes a minute or two. Warnings about deprecated packages are normal and safe to
-ignore.
+## 2. Create the database tables
 
-## 3. Create the Supabase project
+**First, copy the SQL.** Open this file on GitHub:
 
-1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) and click
-   **New project**.
-2. Name it anything. Pick a region near you.
-3. Set a database password. You will not need it again for this app, but save it
-   somewhere anyway.
-4. Click **Create new project**, then wait. It takes 1-2 minutes to provision.
+`supabase/migrations/0001_init.sql`
 
-## 4. Create the database tables
+Tap the **copy icon** in the toolbar above the file contents (it looks like two
+overlapping squares, and its tooltip says *Copy raw file*). That puts the whole
+script on your clipboard, which is far easier than trying to select 150 lines by
+hand on a touchscreen.
 
-1. In your new project, open **SQL Editor** in the left sidebar.
-2. Click **New query**.
-3. Open the file `supabase/migrations/0001_init.sql` from this repo, copy its
-   entire contents, and paste it into the editor.
-4. Click **Run** (or press Ctrl/Cmd + Enter).
+**Then run it.** Back in Supabase:
+
+1. Open **SQL Editor** in the left sidebar.
+2. Tap **New query**.
+3. Tap in the editor and paste.
+4. Tap **Run**.
 
 You should see *Success. No rows returned*. That is what success looks like for
 a script that only creates tables.
@@ -100,23 +107,46 @@ To confirm, open **Table Editor** in the sidebar. You should see seven tables:
 `admin_actions`.
 
 **Running this twice is safe.** Every statement creates its object only if it is
-missing, so a second run does nothing rather than failing. If you get
-`relation "groups" already exists`, you are on an older copy of the file — pull
-the latest and run it again.
+missing, so a second run does nothing rather than failing.
 
 If the seven tables are not all there, the first run stopped partway. Start
-clean: run `supabase/reset.sql` in the same SQL Editor, which drops all seven
+clean: copy and run `supabase/reset.sql` the same way, which drops all seven
 tables, then run `0001_init.sql` again. **`reset.sql` deletes everything in the
 database and cannot be undone**, so only use it on a project with nothing in it
 you want to keep.
 
-## 5. Copy your two Supabase credentials
+## 3. Generate your two secrets
 
-In the same project, open **Project Settings** (the gear icon), then the **API**
+The app needs two long random strings. On a computer you would use `openssl`.
+You have no terminal, but you have a database, and the database can do it.
+
+In the same **SQL Editor**, tap **New query**, paste this, and tap **Run**:
+
+```sql
+select
+  encode(gen_random_bytes(32), 'base64') as session_secret,
+  encode(gen_random_bytes(32), 'base64') as cron_secret;
+```
+
+Two 44-character strings come back, ending in `=`. **Copy both into your Notes
+app now**, labelled, because you cannot get these exact values back — running the
+query again gives you different ones.
+
+They are not interchangeable, so keep track of which is which:
+
+- **`session_secret`** signs the login cookie. Changing it later signs everyone
+  out, which is harmless. They sign back in with join code, username and PIN.
+- **`cron_secret`** is the password the weekly refresh job uses to prove it is
+  allowed to run.
+
+## 4. Copy your two Supabase credentials
+
+Still in Supabase, open **Project Settings** (the gear icon), then the **API**
 section. Some projects show this as **API Keys** — Supabase moves it around, so
 look for whichever of the two is there.
 
-You need two values:
+You need two values. Each has a copy button next to it; use it rather than
+selecting by hand.
 
 | What to copy | Where it is | Looks like |
 | --- | --- | --- |
@@ -124,152 +154,168 @@ You need two values:
 | `service_role` key | Under Project API keys, marked **secret** | A very long string starting `eyJ...` |
 
 **Copy the `service_role` key, not the `anon` key.** They sit next to each other
-and look similar. The anon key will not work here, because every table has
-row-level security on with no policies — the service role key is the only way in.
+and look almost identical. The anon key will not work here, because every table
+has row-level security on with no policies — the service role key is the only way
+in. Getting this wrong produces an app that loads fine and then fails the moment
+you try to create a group, which is miserable to diagnose.
+
+Paste both into your Notes alongside the two secrets. You now have four values.
 
 Treat the service role key like a password. It bypasses all database security.
-It only ever lives in your `.env.local` file and in Vercel's environment
-settings, never in code you commit.
+It should only ever live in Vercel's environment settings, never in a file you
+commit to GitHub.
 
-## 6. Create your environment file
+## 5. Put the code on your main branch
 
-In the project folder:
+The app was built on a branch. Vercel deploys your `main` branch by default, so
+merge the branch in first. All of this is on github.com in Safari:
 
-```bash
-cp .env.example .env.local
-```
+1. Open the repository, then tap **Pull requests** → **New pull request**.
+2. Set **base** to `main` and **compare** to
+   `claude/nfl-pickem-build-spec-jnc1yo`.
+3. Tap **Create pull request**, then **Create pull request** again to confirm.
+4. Tap **Merge pull request**, then **Confirm merge**.
 
-Now open `.env.local` in a text editor. You will fill in five values.
+Future changes land on that same branch, and you repeat this merge to publish
+them.
 
-**First, generate the two secrets.** Run this twice and keep both outputs:
+*Alternative, if you would rather not merge:* deploy the branch directly by
+setting Vercel's **Settings → Git → Production Branch** to the branch name after
+step 6, then redeploying. Merging is simpler to live with, because `main` then
+always means what is live.
 
-```bash
-openssl rand -base64 32
-```
+## 6. Deploy on Vercel
 
-On Windows without `openssl`, use this instead:
+1. Go to [vercel.com/new](https://vercel.com/new) and sign in with GitHub.
+2. Find **BetTest** in the list and tap **Import**. If it is not listed, tap
+   **Adjust GitHub App Permissions** and grant access to the repository.
+3. Leave the framework and build settings exactly as Vercel detects them. It
+   knows Next.js.
+4. Expand **Environment Variables** and add these six, one at a time. Tap the
+   name field, type the name, tap the value field, paste the value, then **Add**.
 
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
+| Name | Value |
+| --- | --- |
+| `SUPABASE_URL` | The Project URL from step 4 |
+| `SUPABASE_SERVICE_ROLE_KEY` | The `service_role` key from step 4 |
+| `SESSION_SECRET` | `session_secret` from step 3 |
+| `CRON_SECRET` | `cron_secret` from step 3 |
+| `ODDS_API_KEY` | Leave the value empty for now |
+| `ODDS_API_BOOKMAKERS` | `draftkings,fanduel` |
 
-**Then fill in the file** so it looks like this, with your own values:
+Watch for a trailing space when pasting on iPadOS — it sometimes tacks one on.
+Tap at the end of the field and check.
 
-```bash
-SUPABASE_URL=https://abcdefgh.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...            # the long secret key from step 5
-SESSION_SECRET=oV3k...                             # first openssl output
-CRON_SECRET=9Xf2...                                # second openssl output
-ODDS_API_KEY=                                      # leave blank for now
-ODDS_API_BOOKMAKERS=draftkings,fanduel
-```
+5. Tap **Deploy** and wait 1-2 minutes.
 
-No quotes around the values, and no spaces around the `=`.
+When it finishes you get a URL like `bettest-abc123.vercel.app`. Open it. You
+should land on the join screen.
 
-`SESSION_SECRET` signs the login cookie. Changing it later signs everyone out,
-which is harmless — they sign back in with their join code, username and PIN.
+## 7. Add it to your Home Screen
 
-## 7. Start it
+The app is built mobile-first, and it is much nicer as an icon than a tab.
 
-```bash
-npm run dev
-```
-
-Open **http://localhost:3000**. You should land on the join screen.
+With the app open in Safari, tap the **Share** button, scroll down, and tap
+**Add to Home Screen**. Do the same on your phone. Tell your friends to do it
+when you send them the join code.
 
 ## 8. Your first five minutes
 
-This is the part worth doing carefully. It proves the whole loop works before
-you involve the odds feed.
+Worth doing carefully. It proves the whole loop works before the odds feed is
+involved.
 
-**Create your pool.** On the join screen, click **Start a group**. Enter a group
+**Create your pool.** On the join screen, tap **Start a group**. Enter a group
 name, a username for yourself, and a 4-8 digit PIN. You become the group admin.
 
 You will land on the Picks tab showing *"No games yet."* That is correct — the
 database has no NFL schedule in it.
 
-**Add a game by hand.** Click the **Admin** tab, then find *Add a game by hand*:
+**Add a game by hand.** Tap the **Admin** tab, then find *Add a game by hand*:
 
 - Season: `2026`
 - Week: `1`
 - Away team and Home team: pick any two
-- Kickoff: **pick a time about 10 minutes from now**
+- Kickoff: **about 10 minutes from now.** The picker uses your iPad's own clock,
+  so just set the time you see now plus ten minutes.
 - Home spread: `-3.5`
 
 The spread is always written from the home team's side. `-3.5` means the home
 team is favored by 3.5 and must win by 4 to cover. `+3.5` means the home team is
 getting 3.5 points. Leave it blank if there is no line yet.
 
-Click **Add game**. Add two or three more the same way so the week has something
-in it.
+Tap **Add game**. Add two or three more so the week has something in it.
 
-**Make your picks.** Back on the **Picks** tab you will see your games. Click
-either team to pick that side. Click **Make this my lock** on one of them — try
-it on a second game and watch the first one release, because only one lock is
-allowed per week.
+**Make your picks.** Back on the **Picks** tab, tap either team to pick that
+side. Tap **Make this my lock** on one of them, then try it on a second game and
+watch the first release. Only one lock is allowed per week.
 
-**Watch a game lock.** Wait for the kickoff time you set to pass, then reload.
-That game now reads **LOCKED**, its buttons stop responding, and the other games
-still take changes. That is the per-game locking rule, which is the single most
-important behavior in the app.
+**Watch a game lock.** Wait for the kickoff time you set to pass, then pull down
+to reload. That game now reads **LOCKED**, its buttons stop responding, and the
+other games still take changes. That is the per-game locking rule, which is the
+most important behavior in the app.
 
 **Score it.** Go to **Admin**, find that game in the slate list, set its status
-to `final`, type in scores where the home team wins by 7, add a note like
-`testing`, and click **Save**.
+to `final`, enter scores where the home team wins by 7, add a note like
+`testing`, and tap **Save**.
 
 Now check the **Leaderboard**. If you took the home team you have 1 point, or 2
-if it was your lock. If you took the away team, 0. The Picks tab shows the same
-result on the game row.
+if it was your lock. If you took the away team, 0.
 
-If that all worked, the core of the app is running correctly.
+If that all worked, the app is running correctly.
 
 ## 9. Turn on the live odds feed
 
 1. Sign up at [the-odds-api.com](https://the-odds-api.com). The free tier gives
-   you an API key immediately.
-2. Put the key in `.env.local` as `ODDS_API_KEY=...`.
-3. Stop the server (Ctrl+C) and run `npm run dev` again. **Environment changes
-   only take effect on restart.**
-4. Go to **Admin → Odds feed** and click **Refresh odds and scores now**.
+   you a key immediately, by email.
+2. In Vercel, open your project → **Settings** → **Environment Variables**.
+3. Find `ODDS_API_KEY`, tap **Edit**, paste the key, and save.
+4. Go to the **Deployments** tab, tap the **⋯** menu on the most recent
+   deployment, and tap **Redeploy**. **Environment changes only take effect on a
+   new deploy** — this step is easy to skip and nothing will work until you do it.
+5. When it finishes, open the app → **Admin** → **Refresh odds and scores now**.
 
-You should see a line like *"14 new games, 14 spreads, 0 scores, 0 lines frozen,
-0 picks graded."* Check the Picks tab — the real NFL slate is now there, with
+You should see something like *"14 new games, 14 spreads, 0 scores, 0 lines
+frozen, 0 picks graded."* Check the Picks tab — the real NFL slate is there with
 live spreads.
 
-If it reports a problem instead, the message names the cause. Nothing is
-damaged either way: a failed fetch changes no stored data, so whatever spreads
-you already had stay exactly as they were.
+If it reports a problem instead, the message names the cause. Nothing is damaged
+either way: a failed fetch changes no stored data, so whatever spreads you
+already had stay exactly as they were.
 
-**Read the quota section below before setting this to run on a schedule.** The
-free tier is much smaller than 15-minute polling needs.
+## 10. Check the weekly job
+
+Open your Vercel project → **Settings** → **Cron Jobs**. You should see one
+entry for `/api/cron/refresh`. It runs itself from here on; there is nothing to
+maintain.
+
+Details of what it does and when are in *The weekly refresh* below.
 
 ---
 
-# Going live on Vercel
+# Changing things later, from the iPad
 
-## 1. Push your branch
+**To change settings**, use the Vercel dashboard. Environment variables live in
+Settings → Environment Variables, and every change needs a redeploy from the
+Deployments tab.
 
-```bash
-git push -u origin claude/nfl-pickem-build-spec-jnc1yo
-```
+**To change the code**, you have two options:
 
-## 2. Import the project
+- **Ask Claude.** Describe what you want in a Claude Code session on this
+  repository. Changes get pushed to the working branch, and you merge them the
+  same way as step 5.
+- **Edit on GitHub.** Open a file on github.com, tap the pencil icon, edit, and
+  tap **Commit changes**. Fine for a one-line tweak like a cron schedule.
+  Committing to `main` deploys automatically within a couple of minutes.
 
-1. Go to [vercel.com/new](https://vercel.com/new) and import the `BetTest`
-   repository.
-2. Under **Environment Variables**, add all five from your `.env.local`, one at
-   a time, with the same names and values.
-3. Click **Deploy**.
+**To watch a deploy**, open the Vercel project's Deployments tab. A red entry
+means the build failed; tap it to read the log.
 
-Use the same Supabase project, or create a second one for production and repeat
-steps 4 and 5 above against it. A separate production database is the safer
-habit, since it keeps your test groups out of the real pool.
+---
 
-## 3. Check the cron job
+# The weekly refresh
 
-`vercel.json` schedules `/api/cron/refresh` for **Tuesday evening Eastern**,
-once a week. After the first deploy, open your project's **Settings → Cron
-Jobs** to confirm Vercel picked it up.
+`vercel.json` schedules `/api/cron/refresh` for **Tuesday evening Eastern**, once
+a week.
 
 The schedule reads `0 2 * * 3`, which is Wednesday 02:00 UTC. Vercel Cron only
 speaks UTC, so an Eastern evening time lands on the next UTC day:
@@ -280,58 +326,13 @@ speaks UTC, so an Eastern evening time lands on the next UTC day:
 | September and October (EDT) | Tuesday 10:00 PM Eastern |
 
 Nothing in the app cares about the one-hour drift, and it never moves off
-Tuesday. To pin 9:00 PM during the early season instead, use `0 1 * * 3` and
-accept 8:00 PM for the rest.
+Tuesday. To pin 9:00 PM during the early season instead, change it to
+`0 1 * * 3` and accept 8:00 PM for the rest.
 
 Tuesday evening is a good slot: Monday Night Football is over, the new week has
 begun, and the books have posted lines for the coming Sunday.
 
-**A weekly pull has one real consequence.** Scores and grading ride along on the
-same run, so a game that finishes on Sunday will not show points on the
-leaderboard until Tuesday night. Three ways to handle that:
-
-- **Press the button.** Admin → Odds feed → *Refresh odds and scores now* does
-  the identical work on demand. Two API calls. Press it Sunday night and the
-  leaderboard is current.
-- **Add a second run for scoring.** Put a second entry in `vercel.json`:
-
-  ```json
-  { "path": "/api/cron/refresh", "schedule": "0 6 * * 2" }
-  ```
-
-  That is Tuesday 06:00 UTC, which is Monday 1:00 AM Eastern in winter, after
-  Sunday's games and before Monday night's. Costs two more calls a week.
-- **Leave it.** If nobody minds the leaderboard settling on Tuesday, this is
-  genuinely fine and the cheapest option.
-
-Picks lock on schedule regardless. Whether a game accepts a change is decided by
-comparing its kickoff time to the clock on every page load, not by the cron job,
-so a game kicking off Sunday at 1:00 PM stops taking picks at 1:00 PM whether or
-not anything ran that week.
-
-**Vercel's Hobby plan allows one cron run per day**, which a weekly schedule sits
-comfortably inside. The second scoring run above is also fine. Only a sub-daily
-schedule needs the Pro plan.
-
-## The odds feed and its quota
-
-Each run makes **two** calls to The Odds API, one for spreads and one for
-scores. The weekly schedule is cheap:
-
-| Schedule | Runs per month | API calls per month |
-| --- | --- | --- |
-| **Weekly, as shipped** | ~4 | **~9** |
-| Weekly, plus a Monday scoring run | ~9 | ~18 |
-| Every hour | 720 | 1,440 |
-| Every 15 minutes | 2,880 | 5,760 |
-
-The Odds API's free tier is 500 calls a month, so the shipped schedule uses
-under 2% of it. Manual presses of the admin refresh button count too, at two
-calls each, and you would need roughly 240 of them in a month to run out. Check
-their current pricing page before moving to anything hourly, since tier sizes
-change.
-
-## What the scheduled refresh does
+## What each run does
 
 1. Freezes the line on every game whose kickoff has passed.
 2. Pulls current spreads and any newly scheduled games.
@@ -344,15 +345,60 @@ Pulling first would let a revised line overwrite the number a pick should be
 graded against, in the window between kickoff and the next run. On a weekly
 schedule that window is a week wide.
 
-**Spread freezing is the part that matters.** The line shown to members is
+**Spread freezing is the point of the whole job.** The line shown to members is
 whatever was last fetched, right up to kickoff. At kickoff the current value is
-copied to `frozen_home_spread` and `spread_frozen_at` is stamped. Every later
-run skips a frozen game, so a revision in the feed's historical data can never
-move the number a pick was graded against.
+stored permanently, and every later run skips that game, so a revision in the
+feed's historical data can never move the number a pick was graded against.
 
-If the odds feed is unreachable, the run reports the failure and changes
-nothing: the last known spread stays on screen rather than erroring out.
-Freezing and grading still run, because they only need data already stored.
+If the odds feed is unreachable, the run reports the failure and changes nothing:
+the last known spread stays on screen rather than erroring out. Freezing and
+grading still run, because they only need data already stored.
+
+## The one consequence of a weekly pull
+
+Scores and grading ride on the same run, so a game finishing on Sunday will not
+show points on the leaderboard until Tuesday night. Three ways to handle it:
+
+- **Press the button.** Admin → Odds feed → *Refresh odds and scores now* does
+  the identical work on demand. Press it Sunday night and the leaderboard is
+  current. This is the easiest answer and costs two API calls.
+- **Add a second run for scoring.** Edit `vercel.json` on GitHub and add a second
+  entry to the `crons` list:
+
+  ```json
+  { "path": "/api/cron/refresh", "schedule": "0 6 * * 2" }
+  ```
+
+  That is Tuesday 06:00 UTC, which is Monday 1:00 AM Eastern in winter, after
+  Sunday's games and before Monday night's.
+- **Leave it.** If nobody minds the leaderboard settling on Tuesday, this is
+  genuinely fine and the cheapest option.
+
+Picks lock on schedule regardless. Whether a game accepts a change is decided by
+comparing its kickoff time to the clock every time the page loads, not by the
+cron job, so a game kicking off Sunday at 1:00 PM stops taking picks at 1:00 PM
+whether or not anything ran that week.
+
+**Vercel's Hobby plan allows one cron run per day**, which a weekly schedule sits
+comfortably inside. The second scoring run above is also fine. Only a sub-daily
+schedule needs the Pro plan.
+
+## The odds feed and its quota
+
+Each run makes **two** calls to The Odds API, one for spreads and one for scores.
+The weekly schedule is cheap:
+
+| Schedule | Runs per month | API calls per month |
+| --- | --- | --- |
+| **Weekly, as shipped** | ~4 | **~9** |
+| Weekly, plus a Monday scoring run | ~9 | ~18 |
+| Every hour | 720 | 1,440 |
+| Every 15 minutes | 2,880 | 5,760 |
+
+The Odds API's free tier is 500 calls a month, so the shipped schedule uses under
+2% of it. Manual presses of the admin refresh button count too, at two calls
+each, and you would need roughly 240 of them in a month to run out. Check their
+current pricing page before moving to anything hourly, since tier sizes change.
 
 ---
 
@@ -360,17 +406,18 @@ Freezing and grading still run, because they only need data already stored.
 
 | What you see | What it means |
 | --- | --- |
-| `Missing required environment variable SUPABASE_URL` | `.env.local` is missing, misnamed, or the server was not restarted after you edited it. The file must be `.env.local`, not `.env.local.txt`, in the project root. |
-| The join screen loads but creating a group hangs or errors | Usually the `anon` key was copied instead of `service_role`. Recheck step 5. |
-| `relation "groups" does not exist` | The SQL from step 4 did not run. Open Table Editor in Supabase and confirm the seven tables are there. |
-| `relation "groups" already exists` when running the SQL | You are on an older copy of `0001_init.sql`. The current one is safe to re-run. Pull the latest and run it again. |
-| The SQL ran but only some tables appeared | The run stopped partway. Run `supabase/reset.sql`, then `0001_init.sql` again. Reset deletes everything, so only do this on a database with nothing worth keeping. |
+| The Vercel build failed | Open the deployment and read the log. A missing environment variable does not fail the build, so it is usually something else. |
+| The app loads but creating a group hangs or errors | Almost always the `anon` key was pasted instead of `service_role`. Recheck step 4, then redeploy. |
+| `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |
+| `relation "groups" does not exist` | The SQL from step 2 did not run. Open Supabase's Table Editor and confirm the seven tables are there. |
+| The SQL ran but only some tables appeared | The run stopped partway. Run `supabase/reset.sql`, then `0001_init.sql` again. Reset deletes everything, so only on a database with nothing worth keeping. |
 | Picks tab says "No games yet" | Expected on a fresh database. Add a game by hand (step 8) or run the odds refresh (step 9). |
-| A game will not accept a pick | Its kickoff time has passed. That is the rule working. Use Admin → Picks to edit a pick after kickoff. |
-| Odds refresh says `401` or `Usage quota` | The API key is wrong, or the monthly quota is spent. See the quota table above. |
-| Leaderboard shows 0 after a game is final | Grading runs on the weekly cron pass or when an admin saves a score override. Press Admin → Refresh odds and scores now to grade immediately. |
-| Cron job never appears in Vercel | `vercel.json` has to be committed and deployed. Cron jobs register on deploy, not on save. |
+| A game will not accept a pick | Its kickoff has passed. That is the rule working. Use Admin → Picks to edit a pick after kickoff. |
+| Odds refresh says `401` or `Usage quota` | The key is wrong, was set without redeploying, or the monthly quota is spent. |
+| Leaderboard shows 0 after a game is final | Grading runs on the weekly pass or when an admin saves a score override. Press Admin → Refresh odds and scores now. |
+| Cron job never appears in Vercel | `vercel.json` has to be on the deployed branch. Cron jobs register on deploy, not on save. |
 | Everyone got signed out | `SESSION_SECRET` changed. Harmless — sign back in with join code, username and PIN. |
+| A Supabase button will not tap | Safari's **aA** menu → **Request Desktop Website**. |
 
 ---
 
@@ -390,31 +437,51 @@ The group's creator is its admin. The panel can:
 Every one of these writes to an audit log with the actor, a timestamp, and a
 required note. The panel's last section shows that log.
 
-One thing to know: games and weeks are league-wide, not per-group, because
-every pool picks the same NFL slate. A score override by one group's admin
-therefore applies everywhere. That is the right call for a handful of friendly
-pools sharing an instance; it would need per-group overrides before this ran as
-a multi-tenant service.
+One thing to know: games and weeks are league-wide, not per-group, because every
+pool picks the same NFL slate. A score override by one group's admin therefore
+applies everywhere. That is the right call for a handful of friendly pools
+sharing an instance; it would need per-group overrides before this ran as a
+multi-tenant service.
 
-# Layout
+---
 
+# Running it on a computer
+
+Only needed if you want a local dev server. The iPad path above never requires
+this.
+
+```bash
+git clone https://github.com/richjn13/BetTest.git
+cd BetTest
+npm install
+cp .env.example .env.local     # fill in the same six values
+npm run dev                    # http://localhost:3000
 ```
-src/lib/          scoring, grading, odds parsing, session, database access
-src/app/join      create a group, join one, or sign in
-src/app/g/[id]    picks board, leaderboard, admin panel
-src/lib/refresh.ts  the maintenance pass shared by cron and the admin button
-src/app/api/cron  the scheduled refresh endpoint
-supabase/         the schema, plus a destructive reset script
-```
 
-The rules worth trusting are pure functions with tests: `scoring.ts` for
-grading and standings, `nfl-week.ts` for turning a kickoff time into a week
-number, `odds-parse.ts` for reading the feed.
+Generate the two secrets with `openssl rand -base64 32`, or use the SQL from
+step 3. Apply the schema by pasting
+`supabase/migrations/0001_init.sql` into the Supabase SQL editor, exactly as
+step 2 describes.
 
 ```bash
 npm test        # 31 tests
 npm run build
 ```
+
+# Layout
+
+```
+src/lib/            scoring, grading, odds parsing, session, database access
+src/lib/refresh.ts  the maintenance pass shared by cron and the admin button
+src/app/join        create a group, join one, or sign in
+src/app/g/[id]      picks board, leaderboard, admin panel
+src/app/api/cron    the scheduled refresh endpoint
+supabase/           the schema, plus a destructive reset script
+```
+
+The rules worth trusting are pure functions with tests: `scoring.ts` for grading
+and standings, `nfl-week.ts` for turning a kickoff time into a week number,
+`odds-parse.ts` for reading the feed.
 
 # Known gaps
 
