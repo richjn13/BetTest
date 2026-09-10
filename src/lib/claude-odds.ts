@@ -5,7 +5,12 @@ import { validate, type PullResult } from "./claude-odds-validate";
 
 export type { ProposedGame, PullResult } from "./claude-odds-validate";
 
-const MODEL = "claude-opus-5";
+/**
+ * Sonnet 5 is the default: markedly cheaper and faster than Opus for what this
+ * does, which is reading numbers off a page rather than reasoning hard about
+ * them. Override with ANTHROPIC_MODEL to try another without a code change.
+ */
+const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-5";
 /** Web search can pause a turn; each resume costs one. */
 const MAX_TURNS = 8;
 const MAX_SEARCHES = 8;
@@ -108,19 +113,15 @@ export async function pullLinesWithClaude(
   }
 
   const client = new Anthropic();
-  const messages: Anthropic.Beta.BetaMessageParam[] = [
+  const messages: Anthropic.MessageParam[] = [
     { role: "user", content: prompt(seasonYear, weekNumber) },
   ];
 
   try {
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
-      const response = await client.beta.messages.create({
+      const response = await client.messages.create({
         model: MODEL,
         max_tokens: 16000,
-        // A policy decline would otherwise end the pull; this re-runs it on a
-        // fallback model inside the same call.
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
         thinking: { type: "adaptive" },
         output_config: { effort: "medium" },
         tools: [
@@ -135,7 +136,7 @@ export async function pullLinesWithClaude(
       }
 
       const call = response.content.find(
-        (block): block is Anthropic.Beta.BetaToolUseBlock =>
+        (block): block is Anthropic.ToolUseBlock =>
           block.type === "tool_use" && block.name === "record_lines",
       );
       if (call) return validate(call.input, seasonYear, weekNumber);

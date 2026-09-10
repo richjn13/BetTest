@@ -17,11 +17,14 @@ export const dynamic = "force-dynamic";
  * Server actions inherit their time limit from the page that invokes them, and
  * this page invokes the two slowest things in the app: a refresh that talks to
  * an external feed, and a Claude pull that runs a web search. Vercel's default
- * is 10 seconds on Hobby, which both can outlast -- the work finishes but the
- * response never arrives, so the browser shows an error over a job that
- * actually succeeded. 60 is the Hobby ceiling.
+ * is 10 seconds, which both can outlast -- the work finishes but the response
+ * never arrives, so the browser shows an error over a job that succeeded.
+ *
+ * 300 seconds needs a Pro plan. Hobby allows at most 60, and a deploy that
+ * asks for more than the plan permits is rejected. If a deploy fails naming
+ * maxDuration, lower this to 60.
  */
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export default async function AdminPage({
   params,

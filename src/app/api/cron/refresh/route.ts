@@ -3,7 +3,8 @@ import { env } from "@/lib/env";
 import { runRefresh } from "@/lib/refresh";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Matches the admin page. Needs a Pro plan; lower to 60 on Hobby.
+export const maxDuration = 300;
 
 /**
  * Scheduled maintenance, run by Vercel Cron on the schedule in vercel.json.

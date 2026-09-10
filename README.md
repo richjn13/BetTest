@@ -200,6 +200,7 @@ Git → Production Branch** in Vercel to match.
 | `SESSION_SECRET` | `session_secret` from step 3 |
 | `CRON_SECRET` | `cron_secret` from step 3 |
 | `ANTHROPIC_API_KEY` | Your Anthropic API key, from console.anthropic.com. Starts `sk-ant-` |
+| `ANTHROPIC_MODEL` | Optional. Leave unset for the Sonnet default |
 | `ODDS_API_KEY` | Leave the value empty for now |
 
 **The two API keys look nothing alike, so don't mix them up.** The Anthropic key
@@ -331,8 +332,20 @@ the result, and the pull is written to the audit log with its source. What it
 cannot catch is a plausible number that happens to be wrong, which is why the
 slate list underneath is worth a glance before anyone picks.
 
-Cost is small. One pull is a search plus a page or two of reasoning, so a weekly
-pull runs on the order of a dollar or two a month.
+**The model.** Pulls use Claude Sonnet 5 by default, which is quicker and
+several times cheaper than Opus for what this does: reading numbers off a page
+rather than reasoning hard about them. Set `ANTHROPIC_MODEL` in Vercel to try
+another one without a code change.
+
+**The time limit.** A search-backed pull can take a few minutes, so the admin
+page asks Vercel for 300 seconds. **That needs a Pro plan.** Hobby allows at
+most 60 seconds, and a deploy asking for more than the plan permits is
+rejected. If a deploy fails naming `maxDuration`, change the `maxDuration`
+export in `src/app/g/[groupId]/admin/page.tsx` and
+`src/app/api/cron/refresh/route.ts` from 300 to 60.
+
+Cost is small either way. A weekly pull runs on the order of well under a dollar
+a month on Sonnet.
 
 ### How a pulled game gets scored
 
@@ -548,6 +561,7 @@ the rows below are things it will find for you.
 | Odds refresh fails right after you add the key | Check you pasted the Odds API key and not the Anthropic one. `/setup` names this directly. The Odds API key has no `sk-` prefix. |
 | Pull lines with Claude says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
 | A page 500s instantly, with no outgoing requests in the Vercel log | The page's module failed to load, so nothing ran. Read the Vercel log for the reason. One cause is a `"use server"` file exporting anything other than an async function, which `npm test` now checks for. |
+| The Vercel deploy fails naming `maxDuration` | You are on Hobby, which caps a function at 60 seconds. Change both `maxDuration` exports from 300 to 60, or upgrade to Pro. |
 | A button shows an error, but the work actually happened | A timeout, not a failure. The job finished server-side after the response gave up. Reload and check before pressing again. Vercel's default is 10 seconds on Hobby; the admin page now asks for 60, its ceiling. A search-backed Claude pull can still exceed that, in which case pull one week at a time or move to Pro. |
 | `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |
 | `relation "groups" does not exist` | The SQL from step 2 did not run. Open Supabase's Table Editor and confirm the seven tables are there. |
