@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { syncGameState } from "@/lib/grading";
-import { refreshOdds, refreshScores } from "@/lib/odds";
+import { runRefresh } from "@/lib/refresh";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Scheduled maintenance, run every 15 minutes by Vercel Cron:
+ * Scheduled maintenance, run by Vercel Cron on the schedule in vercel.json.
  *
- *   1. pull current spreads and any newly scheduled games
- *   2. pull scores for games in progress or just finished
- *   3. freeze the line on every game past kickoff, then regrade
+ *   1. freeze the line on every game past kickoff
+ *   2. pull current spreads and any newly scheduled games
+ *   3. pull scores for games in progress or just finished
+ *   4. regrade every pick on a resolved game
  *
- * Step 3 runs even when the odds feed is down, so lines still freeze on time
- * and finished games still grade from whatever scores we already hold.
+ * Steps 1 and 4 run even when the odds feed is down, since they only need data
+ * already stored.
  */
 export async function GET(request: Request): Promise<NextResponse> {
   const authorization = request.headers.get("authorization");
@@ -22,38 +22,20 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const odds = await refreshOdds();
-  const scores = await refreshScores();
-
-  // The odds feed degrades softly -- stored spreads are untouched, so members
-  // keep seeing the last known line. A database failure is a real outage, so
-  // it is reported as one.
-  let state: { frozen: number; graded: number } | null = null;
-  let databaseError: string | null = null;
-  try {
-    state = await syncGameState();
-  } catch (error) {
-    databaseError = error instanceof Error ? error.message : String(error);
-    console.error("cron: freezing and grading failed", error);
-  }
-
-  const degraded = [odds.error, scores.error, databaseError].filter(
-    (message): message is string => Boolean(message),
-  );
+  const result = await runRefresh();
 
   return NextResponse.json(
     {
-      ok: degraded.length === 0,
-      degraded,
-      odds: {
-        gamesSeen: odds.gamesSeen,
-        gamesInserted: odds.gamesInserted,
-        spreadsUpdated: odds.spreadsUpdated,
-      },
-      scores: { gamesSeen: scores.gamesSeen, scoresUpdated: scores.scoresUpdated },
-      frozen: state?.frozen ?? null,
-      graded: state?.graded ?? null,
+      ok: result.ok,
+      // An odds feed failure is reported but not an HTTP error: stored spreads
+      // are untouched, so members keep seeing the last known line. A database
+      // failure is a real outage and answers as one.
+      degraded: result.degraded,
+      frozen: result.frozen,
+      odds: { gamesInserted: result.gamesInserted, spreadsUpdated: result.spreadsUpdated },
+      scores: { scoresUpdated: result.scoresUpdated },
+      graded: result.graded,
     },
-    { status: databaseError ? 500 : 200 },
+    { status: result.databaseError ? 500 : 200 },
   );
 }

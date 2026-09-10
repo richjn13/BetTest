@@ -103,10 +103,3 @@ function toGradable(game: Game): GradableGame {
     frozenHomeSpread: game.spread_frozen_at ? game.frozen_home_spread : game.home_spread,
   };
 }
-
-/** Both maintenance passes, in the order they depend on each other. */
-export async function syncGameState(): Promise<{ frozen: number; graded: number }> {
-  const frozen = await freezeKickedOffSpreads();
-  const graded = await gradeResolvedGames();
-  return { frozen, graded };
-}

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { db, unwrap } from "@/lib/db";
-import { gradeResolvedGames, syncGameState } from "@/lib/grading";
-import { refreshOdds, refreshScores } from "@/lib/odds";
+import { gradeResolvedGames } from "@/lib/grading";
+import { runRefresh, summarize } from "@/lib/refresh";
 import {
   AppError,
   addPointAdjustment,
@@ -325,19 +325,16 @@ export async function syncOddsAction(
   const groupId = text(form, "groupId");
 
   return run(groupId, async () => {
-    const odds = await refreshOdds();
-    const scores = await refreshScores();
-    const { frozen, graded } = await syncGameState();
+    const result = await runRefresh();
+    const summary = summarize(result);
 
-    const problems = [odds.error, scores.error].filter(Boolean);
-    const summary =
-      `${odds.gamesInserted} new games, ${odds.spreadsUpdated} spreads, ` +
-      `${scores.scoresUpdated} scores, ${frozen} lines frozen, ${graded} picks graded.`;
-
-    if (problems.length > 0) {
+    if (result.databaseError) throw new Error(result.databaseError);
+    if (result.degraded.length > 0) {
       // Not a failure: stored spreads are untouched, so members still see the
       // last known line.
-      throw new AppError(`${summary} The odds feed had trouble: ${problems.join("; ")}`);
+      throw new AppError(
+        `${summary} The odds feed had trouble: ${result.degraded.join("; ")}`,
+      );
     }
     return summary;
   });

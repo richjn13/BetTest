@@ -27,7 +27,7 @@ season-long leaderboard.
 | Database | Supabase Postgres, reached server-side with the service role key |
 | Styling | Tailwind CSS |
 | Odds | The Odds API, NFL spreads and scores |
-| Scheduling | Vercel Cron, every 15 minutes |
+| Scheduling | Vercel Cron, weekly on Tuesday evening |
 | Hosting | Vercel |
 
 ### How signing in works
@@ -267,44 +267,82 @@ habit, since it keeps your test groups out of the real pool.
 
 ## 3. Check the cron job
 
-`vercel.json` already schedules `/api/cron/refresh` every 15 minutes. After the
-first deploy, open your project's **Settings → Cron Jobs** to confirm Vercel
-picked it up.
+`vercel.json` schedules `/api/cron/refresh` for **Tuesday evening Eastern**,
+once a week. After the first deploy, open your project's **Settings → Cron
+Jobs** to confirm Vercel picked it up.
 
-**Vercel's Hobby plan only allows one cron run per day.** The schedule in
-`vercel.json` needs the Pro plan. On Hobby you have two options: upgrade, or
-leave the endpoint in place and call it from a free external scheduler such as
-cron-job.org, sending the header `Authorization: Bearer <your CRON_SECRET>`.
+The schedule reads `0 2 * * 3`, which is Wednesday 02:00 UTC. Vercel Cron only
+speaks UTC, so an Eastern evening time lands on the next UTC day:
+
+| Part of the season | What `0 2 * * 3` means locally |
+| --- | --- |
+| November to February (EST) | Tuesday 9:00 PM Eastern |
+| September and October (EDT) | Tuesday 10:00 PM Eastern |
+
+Nothing in the app cares about the one-hour drift, and it never moves off
+Tuesday. To pin 9:00 PM during the early season instead, use `0 1 * * 3` and
+accept 8:00 PM for the rest.
+
+Tuesday evening is a good slot: Monday Night Football is over, the new week has
+begun, and the books have posted lines for the coming Sunday.
+
+**A weekly pull has one real consequence.** Scores and grading ride along on the
+same run, so a game that finishes on Sunday will not show points on the
+leaderboard until Tuesday night. Three ways to handle that:
+
+- **Press the button.** Admin → Odds feed → *Refresh odds and scores now* does
+  the identical work on demand. Two API calls. Press it Sunday night and the
+  leaderboard is current.
+- **Add a second run for scoring.** Put a second entry in `vercel.json`:
+
+  ```json
+  { "path": "/api/cron/refresh", "schedule": "0 6 * * 2" }
+  ```
+
+  That is Tuesday 06:00 UTC, which is Monday 1:00 AM Eastern in winter, after
+  Sunday's games and before Monday night's. Costs two more calls a week.
+- **Leave it.** If nobody minds the leaderboard settling on Tuesday, this is
+  genuinely fine and the cheapest option.
+
+Picks lock on schedule regardless. Whether a game accepts a change is decided by
+comparing its kickoff time to the clock on every page load, not by the cron job,
+so a game kicking off Sunday at 1:00 PM stops taking picks at 1:00 PM whether or
+not anything ran that week.
+
+**Vercel's Hobby plan allows one cron run per day**, which a weekly schedule sits
+comfortably inside. The second scoring run above is also fine. Only a sub-daily
+schedule needs the Pro plan.
 
 ## The odds feed and its quota
 
-Each cron run makes **two** calls to The Odds API, one for spreads and one for
-scores. That adds up faster than people expect:
+Each run makes **two** calls to The Odds API, one for spreads and one for
+scores. The weekly schedule is cheap:
 
 | Schedule | Runs per month | API calls per month |
 | --- | --- | --- |
-| Every 15 minutes, always | 2,880 | 5,760 |
-| Every 15 minutes, game days only | ~1,240 | ~2,480 |
-| Every hour, always | 720 | 1,440 |
+| **Weekly, as shipped** | ~4 | **~9** |
+| Weekly, plus a Monday scoring run | ~9 | ~18 |
+| Every hour | 720 | 1,440 |
+| Every 15 minutes | 2,880 | 5,760 |
 
-The Odds API's free tier is 500 calls a month, so **none of these fit inside
-it**. Check their current pricing page for tier sizes before you pick a
-schedule; they change it periodically.
-
-Two ways to stay cheap:
-
-- **Manual refresh only.** Delete the `crons` block from `vercel.json` and press
-  the Admin refresh button yourself on game days. A handful of calls a week.
-  Spreads then only freeze when you press it, so press it before kickoff.
-- **Narrow the schedule.** Change the cron expression in `vercel.json` to
-  `*/15 * * * 0,1,4` for Sunday, Monday and Thursday only. That is the middle
-  row above.
+The Odds API's free tier is 500 calls a month, so the shipped schedule uses
+under 2% of it. Manual presses of the admin refresh button count too, at two
+calls each, and you would need roughly 240 of them in a month to run out. Check
+their current pricing page before moving to anything hourly, since tier sizes
+change.
 
 ## What the scheduled refresh does
 
-1. Pulls current spreads and any newly scheduled games.
-2. Pulls scores for games in progress or recently finished.
-3. Freezes the line on every game past kickoff, then regrades affected picks.
+1. Freezes the line on every game whose kickoff has passed.
+2. Pulls current spreads and any newly scheduled games.
+3. Pulls scores for games in progress or recently finished.
+4. Regrades every pick on a resolved game.
+
+**Freezing comes first on purpose.** It stamps the line on every game past
+kickoff, and the odds pull then skips those games because they are frozen.
+Pulling first would let a revised line overwrite the number a pick should be
+graded against, in the window between kickoff and the next run. On a weekly
+schedule that window is a week wide.
 
 **Spread freezing is the part that matters.** The line shown to members is
 whatever was last fetched, right up to kickoff. At kickoff the current value is
@@ -330,7 +368,8 @@ Freezing and grading still run, because they only need data already stored.
 | Picks tab says "No games yet" | Expected on a fresh database. Add a game by hand (step 8) or run the odds refresh (step 9). |
 | A game will not accept a pick | Its kickoff time has passed. That is the rule working. Use Admin → Picks to edit a pick after kickoff. |
 | Odds refresh says `401` or `Usage quota` | The API key is wrong, or the monthly quota is spent. See the quota table above. |
-| Leaderboard shows 0 after a game is final | Grading runs on the cron pass or when an admin saves a score override. Press Admin → Refresh odds and scores now. |
+| Leaderboard shows 0 after a game is final | Grading runs on the weekly cron pass or when an admin saves a score override. Press Admin → Refresh odds and scores now to grade immediately. |
+| Cron job never appears in Vercel | `vercel.json` has to be committed and deployed. Cron jobs register on deploy, not on save. |
 | Everyone got signed out | `SESSION_SECRET` changed. Harmless — sign back in with join code, username and PIN. |
 
 ---
@@ -363,6 +402,7 @@ a multi-tenant service.
 src/lib/          scoring, grading, odds parsing, session, database access
 src/app/join      create a group, join one, or sign in
 src/app/g/[id]    picks board, leaderboard, admin panel
+src/lib/refresh.ts  the maintenance pass shared by cron and the admin button
 src/app/api/cron  the scheduled refresh endpoint
 supabase/         the schema, plus a destructive reset script
 ```
