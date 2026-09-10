@@ -21,9 +21,9 @@ import {
 } from "@/lib/queries";
 import type { GameStatus, Side } from "@/lib/types";
 
-export type AdminState = { error: string | null; message: string | null };
+import type { AdminState } from "./state";
 
-export const IDLE: AdminState = { error: null, message: null };
+export type { AdminState };
 
 function text(form: FormData, field: string): string {
   return String(form.get(field) ?? "").trim();

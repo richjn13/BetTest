@@ -16,8 +16,8 @@ import type {
   User,
   Week,
 } from "@/lib/types";
+import { IDLE, type AdminState } from "./state";
 import {
-  IDLE,
   addGameAction,
   adjustPointsAction,
   deleteGameAction,
@@ -27,7 +27,6 @@ import {
   regenerateCodeAction,
   removeUserAction,
   syncOddsAction,
-  type AdminState,
 } from "./actions";
 
 type Props = {
