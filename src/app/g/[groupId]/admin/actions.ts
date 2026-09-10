@@ -53,8 +53,12 @@ async function run(
     return { error: null, message };
   } catch (error) {
     if (error instanceof AppError) return { error: error.message, message: null };
+    // Anything else is a bug or an outage. Say what it was. This panel is
+    // admin-only, the text comes from Postgres or an upstream API rather than
+    // from user data, and "that didn't work" cannot be acted on.
     console.error(error);
-    return { error: "That didn't work. Check the values and try again.", message: null };
+    const reason = error instanceof Error ? error.message : String(error);
+    return { error: `That didn't work: ${reason}`, message: null };
   }
 }
 
@@ -387,7 +391,9 @@ export async function syncOddsAction(
     const result = await runRefresh();
     const summary = summarize(result);
 
-    if (result.databaseError) throw new Error(result.databaseError);
+    if (result.databaseError) {
+      throw new AppError(`The database call failed: ${result.databaseError}`);
+    }
 
     // Only a failed spreads pull is worth calling a failure. Scores are a
     // separate endpoint with its own plan restrictions, and a pool that has its
