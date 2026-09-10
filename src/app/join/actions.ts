@@ -73,14 +73,16 @@ export async function createGroupAction(
   const groupName = read(form, "groupName");
   const username = read(form, "username");
   const pin = read(form, "pin");
+  const ownerKey = read(form, "ownerKey");
 
+  if (!ownerKey) return { error: "Enter the owner key." };
   if (groupName.length < 1 || groupName.length > 60) {
     return { error: "Give the group a name of 60 characters or fewer." };
   }
   const invalid = validate(username, pin);
   if (invalid) return { error: invalid };
 
-  return attempt(() => createGroup(groupName, username, pin));
+  return attempt(() => createGroup(groupName, username, pin, ownerKey));
 }
 
 export async function joinGroupAction(

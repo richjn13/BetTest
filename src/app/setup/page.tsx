@@ -219,6 +219,32 @@ function checkKeyShape(name: "ODDS_API_KEY" | "ANTHROPIC_API_KEY"): Check {
   return { ...base, detail: `Set, ${value.length} characters.` };
 }
 
+/** Creating a pool is owner-only, and unset means nobody can. */
+function checkCreateGroupSecret(): Check {
+  const value = process.env.CREATE_GROUP_SECRET?.trim();
+  if (!value) {
+    return {
+      label: "CREATE_GROUP_SECRET",
+      status: "warn",
+      detail:
+        "Not set, so nobody can start a new pool, including you. Existing pools " +
+        "are unaffected. Set it if you want to create another.",
+    };
+  }
+  if (value.length < 8) {
+    return {
+      label: "CREATE_GROUP_SECRET",
+      status: "warn",
+      detail: `Set, but only ${value.length} characters. Make it longer.`,
+    };
+  }
+  return {
+    label: "CREATE_GROUP_SECRET",
+    status: "ok",
+    detail: "Set. Only someone with this key can start a pool.",
+  };
+}
+
 async function checkOddsFeed(): Promise<Check[]> {
   const key = checkKeyShape("ODDS_API_KEY");
   if (key.status !== "ok") {
@@ -290,6 +316,7 @@ export default async function SetupPage() {
     checkPresence("SESSION_SECRET"),
     checkPresence("CRON_SECRET"),
     checkKeyShape("ANTHROPIC_API_KEY"),
+    checkCreateGroupSecret(),
   ];
 
   const [database, oddsFeed] = await Promise.all([checkDatabase(), checkOddsFeed()]);

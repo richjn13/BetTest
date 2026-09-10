@@ -33,6 +33,15 @@ export function missingConfiguration(): string[] {
 }
 
 export const env = {
+  /**
+   * Gate on creating a new pool. Unset means nobody can create one, which is
+   * the safe default for an app whose join page is public.
+   */
+  get createGroupSecret(): string | null {
+    const value = process.env.CREATE_GROUP_SECRET?.trim();
+    return value ? value : null;
+  },
+
   get supabaseUrl() {
     return required("SUPABASE_URL");
   },

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { env } from "@/lib/env";
 import { getSession } from "@/lib/session";
 import { getGroup } from "@/lib/queries";
 import { JoinForms } from "./JoinForms";
@@ -45,7 +46,7 @@ export default async function JoinPage() {
         </section>
       )}
 
-      <JoinForms />
+      <JoinForms canCreate={env.createGroupSecret !== null} />
     </main>
   );
 }

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireViewer } from "@/lib/auth";
 import { getGroup } from "@/lib/queries";
 import { getSession } from "@/lib/session";
@@ -46,9 +45,6 @@ export default async function GroupLayout({
               </button>
             </form>
           ))}
-          <Link href="/join" className="text-accent hover:underline">
-            Add pool
-          </Link>
           <form action={signOutAction}>
             <input type="hidden" name="userId" value={user.id} />
             <button type="submit" className="text-muted hover:underline">

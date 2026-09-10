@@ -26,10 +26,12 @@ import {
   pullLinesAction,
   regenerateCodeAction,
   removeUserAction,
+  setAdminAction,
   syncOddsAction,
 } from "./actions";
 
 type Props = {
+  viewerId: string;
   group: Group;
   members: User[];
   weeks: Week[];
@@ -41,7 +43,7 @@ type Props = {
 };
 
 export function AdminPanel(props: Props) {
-  const { group, members, weeks, week, games, picks, actions, adjustments } = props;
+  const { viewerId, group, members, weeks, week, games, picks, actions, adjustments } = props;
   const router = useRouter();
 
   return (
@@ -95,7 +97,7 @@ export function AdminPanel(props: Props) {
       </Section>
 
       <Section title="Members">
-        <MembersSection groupId={group.id} members={members} />
+        <MembersSection groupId={group.id} members={members} viewerId={viewerId} />
       </Section>
 
       <Section title="Audit log">
@@ -622,42 +624,95 @@ function AdjustmentsSection({
   );
 }
 
-function MembersSection({ groupId, members }: { groupId: string; members: User[] }) {
-  const [state, action] = useFormState(removeUserAction, IDLE);
+function MembersSection({
+  groupId,
+  members,
+  viewerId,
+}: {
+  groupId: string;
+  members: User[];
+  viewerId: string;
+}) {
+  const [removeState, remove] = useFormState(removeUserAction, IDLE);
+  const [adminState, changeAdmin] = useFormState(setAdminAction, IDLE);
+  const adminCount = members.filter((member) => member.is_admin).length;
+
   return (
-    <div className="space-y-3">
-      <Feedback state={state} />
-      <ul className="space-y-2">
-        {members.map((member) => (
-          <li key={member.id} className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="min-w-24 font-medium">
-              {member.username}
-              {member.is_admin && <span className="ml-1 text-xs text-muted">admin</span>}
-            </span>
-            {!member.is_admin && (
-              <form action={action} className="flex flex-1 gap-2">
-                <input type="hidden" name="groupId" value={groupId} />
-                <input type="hidden" name="userId" value={member.id} />
-                <input type="hidden" name="username" value={member.username} />
-                <input
-                  name="note"
-                  required
-                  placeholder="reason for removing"
-                  className="field py-1 text-sm"
-                />
-                <SubmitButton
-                  className="btn shrink-0 border-red-500/40 py-1 text-sm text-red-500"
-                  pendingLabel="Removing..."
-                >
-                  Remove
-                </SubmitButton>
-              </form>
-            )}
-          </li>
-        ))}
+    <div className="space-y-4">
+      <Feedback state={adminState} />
+      <Feedback state={removeState} />
+
+      <ul className="space-y-3">
+        {members.map((member) => {
+          const isLastAdmin = member.is_admin && adminCount === 1;
+          return (
+            <li key={member.id} className="rounded-lg border border-edge p-3">
+              <p className="mb-2 text-sm font-medium">
+                {member.username}
+                {member.is_admin && (
+                  <span className="ml-2 rounded bg-accent/10 px-1.5 py-0.5 text-xs text-accent">
+                    admin
+                  </span>
+                )}
+                {member.id === viewerId && (
+                  <span className="ml-2 text-xs text-muted">you</span>
+                )}
+              </p>
+
+              {isLastAdmin ? (
+                <p className="text-xs text-muted">
+                  The only admin. Promote someone else before changing this.
+                </p>
+              ) : (
+                <form action={changeAdmin} className="flex gap-2">
+                  <input type="hidden" name="groupId" value={groupId} />
+                  <input type="hidden" name="userId" value={member.id} />
+                  <input type="hidden" name="username" value={member.username} />
+                  <input
+                    type="hidden"
+                    name="makeAdmin"
+                    value={member.is_admin ? "false" : "true"}
+                  />
+                  <input
+                    name="note"
+                    required
+                    placeholder="reason"
+                    className="field py-1 text-sm"
+                  />
+                  <SubmitButton className="btn shrink-0 py-1 text-sm" pendingLabel="Saving...">
+                    {member.is_admin ? "Remove admin" : "Make admin"}
+                  </SubmitButton>
+                </form>
+              )}
+
+              {!member.is_admin && (
+                <form action={remove} className="mt-2 flex gap-2">
+                  <input type="hidden" name="groupId" value={groupId} />
+                  <input type="hidden" name="userId" value={member.id} />
+                  <input type="hidden" name="username" value={member.username} />
+                  <input
+                    name="note"
+                    required
+                    placeholder="reason for removing"
+                    className="field py-1 text-sm"
+                  />
+                  <SubmitButton
+                    className="btn shrink-0 border-red-500/40 py-1 text-sm text-red-500"
+                    pendingLabel="Removing..."
+                  >
+                    Remove
+                  </SubmitButton>
+                </form>
+              )}
+            </li>
+          );
+        })}
       </ul>
+
       <p className="text-xs text-muted">
-        Removing a member deletes their picks. There is no undo.
+        An admin can do everything on this page, including editing picks and
+        adjusting points. Removing a member deletes their picks, and there is no
+        undo. Demote an admin before removing them.
       </p>
     </div>
   );

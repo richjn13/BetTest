@@ -33,7 +33,7 @@ export default async function AdminPage({
   params: { groupId: string };
   searchParams: { week?: string };
 }) {
-  const { group } = await requireAdmin(params.groupId);
+  const { group, user } = await requireAdmin(params.groupId);
 
   const [members, weeks, actions, adjustments] = await Promise.all([
     getMembers(params.groupId),
@@ -56,6 +56,7 @@ export default async function AdminPage({
 
   return (
     <AdminPanel
+      viewerId={user.id}
       group={group}
       members={members}
       weeks={weeks}

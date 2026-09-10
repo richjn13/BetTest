@@ -1,6 +1,7 @@
 import "server-only";
 import { db, unwrap } from "./db";
-import { generateJoinCode, hashPin, verifyPin } from "./crypto";
+import { generateJoinCode, hashPin, timingSafeEquals, verifyPin } from "./crypto";
+import { env } from "./env";
 import { weekLabel } from "./format";
 import { buildStandings, type Adjustment, type ScoredPick, type Standing } from "./scoring";
 import {
@@ -24,7 +25,20 @@ export async function createGroup(
   groupName: string,
   username: string,
   pin: string,
+  ownerKey: string,
 ): Promise<{ group: Group; user: User }> {
+  // Creating a pool is owner-only. Checked here rather than only in the form
+  // action, so no future caller can skip it.
+  const expected = env.createGroupSecret;
+  if (!expected) {
+    throw new AppError(
+      "Creating a pool is switched off on this deployment. Set CREATE_GROUP_SECRET to enable it.",
+    );
+  }
+  if (!timingSafeEquals(ownerKey, expected)) {
+    throw new AppError("That owner key is not right.");
+  }
+
   const group = await insertGroupWithUniqueCode(groupName.trim());
   const user = unwrap(
     await db()
@@ -171,6 +185,38 @@ export async function getMembers(groupId: string): Promise<User[]> {
     .eq("group_id", groupId)
     .order("username");
   return (unwrap(result) as User[]) ?? [];
+}
+
+/**
+ * Promotes or demotes a member. The last admin cannot be demoted, since a
+ * group with no admin has no way back -- nobody could regenerate the join code
+ * or promote anyone.
+ */
+export async function setAdmin(
+  groupId: string,
+  userId: string,
+  isAdmin: boolean,
+): Promise<void> {
+  if (!isAdmin) {
+    const admins = unwrap<{ id: string }[]>(
+      await db().from("users").select("id").eq("group_id", groupId).eq("is_admin", true),
+    ) ?? [];
+    const remaining = admins.filter((admin) => admin.id !== userId);
+    if (remaining.length === 0) {
+      throw new AppError(
+        "That is the only admin left. Promote someone else first, then remove this one.",
+      );
+    }
+  }
+
+  unwrap(
+    await db()
+      .from("users")
+      .update({ is_admin: isAdmin })
+      .eq("id", userId)
+      .eq("group_id", groupId)
+      .select("id"),
+  );
 }
 
 export async function removeUser(groupId: string, userId: string): Promise<void> {

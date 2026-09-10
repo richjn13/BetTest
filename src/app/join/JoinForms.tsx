@@ -20,7 +20,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "signin", label: "Sign in" },
 ];
 
-export function JoinForms() {
+export function JoinForms({ canCreate }: { canCreate: boolean }) {
   const [tab, setTab] = useState<Tab>("join");
 
   return (
@@ -45,7 +45,7 @@ export function JoinForms() {
 
       <div className="p-5">
         {tab === "join" && <JoinTab />}
-        {tab === "create" && <CreateTab />}
+        {tab === "create" && <CreateTab canCreate={canCreate} />}
         {tab === "signin" && <SignInTab />}
       </div>
     </div>
@@ -133,11 +133,38 @@ function JoinTab() {
   );
 }
 
-function CreateTab() {
+function CreateTab({ canCreate }: { canCreate: boolean }) {
   const [state, action] = useFormState(createGroupAction, EMPTY);
+
+  if (!canCreate) {
+    return (
+      <p className="text-sm text-muted">
+        Starting a new pool is switched off. If this is your deployment, set{" "}
+        <span className="font-mono text-ink">CREATE_GROUP_SECRET</span> in Vercel
+        and redeploy.
+      </p>
+    );
+  }
+
   return (
     <form action={action} className="space-y-4">
       <Error message={state.error} />
+      <div>
+        <label className="label" htmlFor="ownerKey">
+          Owner key
+        </label>
+        <input
+          id="ownerKey"
+          name="ownerKey"
+          type="password"
+          required
+          autoComplete="off"
+          className="field"
+        />
+        <p className="mt-1 text-xs text-muted">
+          Only you have this. It is what stops anyone else starting a pool here.
+        </p>
+      </div>
       <div>
         <label className="label" htmlFor="groupName">
           Group name

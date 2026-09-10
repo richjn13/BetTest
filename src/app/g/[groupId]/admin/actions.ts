@@ -18,6 +18,7 @@ import {
   logAdminAction,
   regenerateJoinCode,
   removeUser,
+  setAdmin,
 } from "@/lib/queries";
 import type { GameStatus, Side } from "@/lib/types";
 
@@ -94,6 +95,44 @@ export async function regenerateCodeAction(
       note: "Previous code no longer works.",
     });
     return `New join code: ${code}`;
+  });
+}
+
+/**
+ * Promotes or demotes a member. An admin can do everything on this page, so
+ * both directions are logged with a required note.
+ */
+export async function setAdminAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const userId = text(form, "userId");
+  const username = text(form, "username");
+  const makeAdmin = text(form, "makeAdmin") === "true";
+  const note = text(form, "note");
+
+  return run(groupId, async (actor) => {
+    if (!userId) throw new AppError("Pick a member.");
+    if (!note) throw new AppError("Add a note explaining the change.");
+
+    await setAdmin(groupId, userId, makeAdmin);
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: makeAdmin ? "grant_admin" : "revoke_admin",
+      targetUserId: userId,
+      note,
+      details: { username },
+    });
+
+    if (!makeAdmin && userId === actor.id) {
+      return `You are no longer an admin. This page will stop being available.`;
+    }
+    return makeAdmin
+      ? `${username} is now an admin and can do everything on this page.`
+      : `${username} is no longer an admin.`;
   });
 }
 

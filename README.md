@@ -34,6 +34,24 @@ server, skip to *Running it on a computer* at the end.
 | Scheduling | Vercel Cron, weekly on Tuesday evening |
 | Hosting | Vercel |
 
+### Who can do what
+
+| Anyone with the link | Join an existing pool with its code, or sign in |
+| --- | --- |
+| **Whoever has the owner key** | Start a new pool |
+| **An admin of a pool** | Everything in that pool's admin panel |
+
+**Starting a pool needs `CREATE_GROUP_SECRET`**, an owner key you set in Vercel
+and type on the Start a group tab. The join page is public, so without this
+anyone who found the URL could create pools. Leave it unset and nobody can start
+one, including you; existing pools carry on as normal.
+
+**Admins are appointed, not fixed.** Whoever creates a pool is its first admin,
+and under Admin → Members they can promote or demote anyone. Every change needs
+a note and is written to the audit log. The last admin cannot be demoted,
+because a pool with no admin has no way back: nobody could regenerate the join
+code or promote a replacement.
+
 ### How signing in works
 
 There is no email or password. A member joins with a **join code, a username,
@@ -199,6 +217,7 @@ Git → Production Branch** in Vercel to match.
 | `SUPABASE_SERVICE_ROLE_KEY` | The `service_role` key from step 4 |
 | `SESSION_SECRET` | `session_secret` from step 3 |
 | `CRON_SECRET` | `cron_secret` from step 3 |
+| `CREATE_GROUP_SECRET` | A password only you know. Required to start a pool |
 | `ANTHROPIC_API_KEY` | Your Anthropic API key, from console.anthropic.com. Starts `sk-ant-` |
 | `ANTHROPIC_MODEL` | Optional. Leave unset for the Sonnet default |
 | `ODDS_API_KEY` | Leave the value empty for now |
@@ -622,7 +641,7 @@ step 3. Apply the schema by pasting
 step 2 describes.
 
 ```bash
-npm test        # 65 tests
+npm test        # 75 tests
 npm run build
 ```
 
