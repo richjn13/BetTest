@@ -209,8 +209,14 @@ always means what is live.
 | `SUPABASE_SERVICE_ROLE_KEY` | The `service_role` key from step 4 |
 | `SESSION_SECRET` | `session_secret` from step 3 |
 | `CRON_SECRET` | `cron_secret` from step 3 |
-| `ANTHROPIC_API_KEY` | Your Anthropic API key, from console.anthropic.com |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key, from console.anthropic.com. Starts `sk-ant-` |
 | `ODDS_API_KEY` | Leave the value empty for now |
+
+**The two API keys look nothing alike, so don't mix them up.** The Anthropic key
+starts `sk-ant-`. The Odds API key is a plain string of letters and digits with
+no prefix at all, roughly 32 characters. Paste each one bare: no quotes, no
+`Bearer`, no `apiKey=` in front, and nothing after it. `/setup` checks the shape
+of both and says so if they are swapped.
 | `ODDS_API_BOOKMAKERS` | Type `draftkings,fanduel`, or skip this one entirely |
 
 `ODDS_API_BOOKMAKERS` is **not** something you fetch from anywhere. It is your
@@ -543,6 +549,7 @@ the rows below are things it will find for you.
 | The join screen works, then everything breaks after you create a group | Usually a missing `SESSION_SECRET`. The join screen does not read it, but every page does once you have a session cookie. `/setup` will show it. |
 | The same game appears twice in a week | Delete the extra under Admin → Games, then run `0003_one_game_per_matchup.sql` again. It refuses to build its index while duplicates exist and tells you so. |
 | A pulled game never gets a score | It was never linked to the odds feed. Set `ODDS_API_KEY` and press refresh, which adopts it, or enter the final by hand under Admin → Games. |
+| Odds refresh fails right after you add the key | Check you pasted the Odds API key and not the Anthropic one. `/setup` names this directly. The Odds API key has no `sk-` prefix. |
 | Pull lines with Claude says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
 | The pull times out | Vercel's Hobby plan caps a function at 60 seconds and a search-backed pull can exceed that. Pull a single week at a time, or move to Pro, or use the paste-free fallback of adding games by hand. |
 | `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |

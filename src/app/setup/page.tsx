@@ -174,15 +174,63 @@ async function checkDatabase(): Promise<Check[]> {
  * Checks the odds feed. The /sports endpoint this uses does not count against
  * the monthly quota, so opening this page as often as you like costs nothing.
  */
+/**
+ * Two API keys now live side by side and look nothing alike, which makes them
+ * easy to paste into the wrong box. This names that mistake directly instead
+ * of leaving it to show up later as a 401.
+ */
+function checkKeyShape(name: "ODDS_API_KEY" | "ANTHROPIC_API_KEY"): Check {
+  const base = checkPresence(name, true);
+  if (base.status !== "ok") return base;
+
+  const value = (process.env[name] as string).trim();
+  const anthropicShaped = value.startsWith("sk-ant-");
+
+  if (name === "ANTHROPIC_API_KEY") {
+    return anthropicShaped
+      ? { ...base, detail: "Set, and it has the shape of an Anthropic key." }
+      : {
+          ...base,
+          status: "warn",
+          detail:
+            "Set, but it does not start with sk-ant-. Anthropic keys do. Check you " +
+            "have not pasted The Odds API key here.",
+        };
+  }
+
+  if (anthropicShaped) {
+    return {
+      ...base,
+      status: "fail",
+      detail:
+        "This is an Anthropic key, not an Odds API key. The Odds API key is a " +
+        "plain string of letters and digits with no sk- prefix.",
+    };
+  }
+  if (/[\s"']/.test(value) || value.includes("=")) {
+    return {
+      ...base,
+      status: "fail",
+      detail:
+        "Set, but it contains a space, quote, or equals sign. Paste only the key " +
+        "itself, with no apiKey= prefix and no quotes around it.",
+    };
+  }
+  return { ...base, detail: `Set, ${value.length} characters.` };
+}
+
 async function checkOddsFeed(): Promise<Check[]> {
-  const key = checkPresence("ODDS_API_KEY", true);
+  const key = checkKeyShape("ODDS_API_KEY");
   if (key.status !== "ok") {
     return [
       key,
       {
         label: "The Odds API",
         status: "warn",
-        detail: "Not checked, because no key is set. Games can still be added by hand.",
+        detail:
+          key.status === "fail"
+            ? "Not checked, because the key above needs fixing first."
+            : "Not checked, because no key is set. Games can still be added by hand.",
       },
     ];
   }
@@ -241,7 +289,7 @@ export default async function SetupPage() {
     checkServiceRoleKey(),
     checkPresence("SESSION_SECRET"),
     checkPresence("CRON_SECRET"),
-    checkPresence("ANTHROPIC_API_KEY", true),
+    checkKeyShape("ANTHROPIC_API_KEY"),
   ];
 
   const [database, oddsFeed] = await Promise.all([checkDatabase(), checkOddsFeed()]);
