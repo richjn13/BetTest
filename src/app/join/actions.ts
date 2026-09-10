@@ -51,6 +51,9 @@ async function attempt(
     addMembership({ userId: user.id, groupId: group.id });
     destination = `/g/${group.id}/picks`;
   } catch (error) {
+    // Next signals redirect() by throwing; never swallow that.
+    const digest = (error as { digest?: unknown }).digest;
+    if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) throw error;
     if (error instanceof AppError) return { error: error.message };
     // Anything else is a bug or an outage. Say what it was: this is a private
     // pool, the message comes from Postgres rather than from user data, and a

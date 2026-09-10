@@ -547,6 +547,7 @@ the rows below are things it will find for you.
 | `/setup` says The Odds API returned 404 | Fixed. The setup probe was asking for a path that does not exist; your actual refresh was unaffected. Pull the latest and redeploy. |
 | Odds refresh fails right after you add the key | Check you pasted the Odds API key and not the Anthropic one. `/setup` names this directly. The Odds API key has no `sk-` prefix. |
 | Pull lines with Claude says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
+| A button 500s instantly, with no outgoing requests in the Vercel log | The tab is older than the deployment. Its buttons point at server actions that no longer exist, so the request fails before touching anything. Reload the page. Nothing was saved. This happens whenever you leave a tab open across an update. |
 | A button shows an error, but the work actually happened | A timeout, not a failure. The job finished server-side after the response gave up. Reload and check before pressing again. Vercel's default is 10 seconds on Hobby; the admin page now asks for 60, its ceiling. A search-backed Claude pull can still exceed that, in which case pull one week at a time or move to Pro. |
 | `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |
 | `relation "groups" does not exist` | The SQL from step 2 did not run. Open Supabase's Table Editor and confirm the seven tables are there. |

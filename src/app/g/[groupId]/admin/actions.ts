@@ -40,18 +40,33 @@ function optionalNumber(form: FormData, field: string): number | null {
  * Shared wrapper: confirms the caller administers this group, turns AppError
  * into a message for the panel, and refreshes the page on success.
  */
+/**
+ * Next signals redirect() and notFound() by throwing. A catch-all that
+ * swallows those turns a redirect into a confusing message instead of moving
+ * the browser, so they are passed straight through.
+ */
+function rethrowIfNavigation(error: unknown): void {
+  const digest = (error as { digest?: unknown }).digest;
+  if (typeof digest !== "string") return;
+  if (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND") throw error;
+}
+
 async function run(
   groupId: string,
   work: (actor: { id: string; username: string }) => Promise<string>,
 ): Promise<AdminState> {
+  // Outside the try: a non-admin reaching this is redirected, and a redirect
+  // must not be caught.
+  const { user } = await requireAdmin(groupId);
+
   try {
-    const { user } = await requireAdmin(groupId);
     const message = await work({ id: user.id, username: user.username });
     revalidatePath(`/g/${groupId}/admin`);
     revalidatePath(`/g/${groupId}/picks`);
     revalidatePath(`/g/${groupId}/leaderboard`);
     return { error: null, message };
   } catch (error) {
+    rethrowIfNavigation(error);
     if (error instanceof AppError) return { error: error.message, message: null };
     // Anything else is a bug or an outage. Say what it was. This panel is
     // admin-only, the text comes from Postgres or an upstream API rather than

@@ -17,13 +17,27 @@ export default function Error({
   return (
     <main className="mx-auto w-full max-w-md px-4 py-16">
       <h1 className="text-2xl font-bold tracking-tight">Something broke</h1>
+
       <p className="mt-2 text-muted">
-        On a new deployment this is almost always a missing or mistyped
-        environment variable.
+        <strong className="text-ink">If the app was just updated, reload the page.</strong>{" "}
+        A tab opened before an update is still talking to the old version, and
+        the button you pressed no longer exists on the server. A reload fixes
+        it, and nothing was saved.
+      </p>
+      <p className="mt-2 text-muted">
+        Otherwise, on a new deployment this is almost always a missing or
+        mistyped environment variable.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-3">
-        <Link href="/setup" className="btn-primary">
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="btn-primary"
+        >
+          Reload the page
+        </button>
+        <Link href="/setup" className="btn">
           Run the setup check
         </Link>
         <button type="button" onClick={reset} className="btn">
