@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --surface: 248 250 252;
+  --raised: 255 255 255;
+  --edge: 226 232 240;
+  --ink: 15 23 42;
+  --muted: 100 116 139;
+  --accent: 22 101 216;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: 12 16 24;
+    --raised: 22 28 39;
+    --edge: 44 54 70;
+    --ink: 236 241 248;
+    --muted: 148 163 184;
+    --accent: 96 165 250;
+  }
+}
+
+body {
+  background-color: rgb(var(--surface));
+  color: rgb(var(--ink));
+  -webkit-text-size-adjust: 100%;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-edge bg-raised;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg border border-edge px-3 py-2
+           text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn border-transparent bg-accent text-white hover:opacity-90;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-edge bg-surface px-3 py-2 text-base
+           outline-none focus:border-accent focus:ring-2 focus:ring-accent/30;
+  }
+
+  .label {
+    @apply mb-1 block text-sm font-medium text-muted;
+  }
+}
