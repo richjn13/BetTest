@@ -549,6 +549,7 @@ the rows below are things it will find for you.
 | The join screen works, then everything breaks after you create a group | Usually a missing `SESSION_SECRET`. The join screen does not read it, but every page does once you have a session cookie. `/setup` will show it. |
 | The same game appears twice in a week | Delete the extra under Admin → Games, then run `0003_one_game_per_matchup.sql` again. It refuses to build its index while duplicates exist and tells you so. |
 | A pulled game never gets a score | It was never linked to the odds feed. Set `ODDS_API_KEY` and press refresh, which adopts it, or enter the final by hand under Admin → Games. |
+| `/setup` says The Odds API returned 404 | Fixed. The setup probe was asking for a path that does not exist; your actual refresh was unaffected. Pull the latest and redeploy. |
 | Odds refresh fails right after you add the key | Check you pasted the Odds API key and not the Anthropic one. `/setup` names this directly. The Odds API key has no `sk-` prefix. |
 | Pull lines with Claude says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
 | The pull times out | Vercel's Hobby plan caps a function at 60 seconds and a search-backed pull can exceed that. Pull a single week at a time, or move to Pro, or use the paste-free fallback of adding games by hand. |

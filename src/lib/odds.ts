@@ -8,9 +8,9 @@ import {
   type OddsEvent,
   type ScoreEvent,
 } from "./odds-parse";
+import { ENDPOINTS, oddsApiUrl, readableError, type Endpoint } from "./odds-url";
 import { ensureWeek } from "./queries";
 
-const API_BASE = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl";
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export type SyncResult = {
@@ -60,10 +60,8 @@ export function lastKnownQuota(): Quota {
   return lastQuota;
 }
 
-async function getJson<T>(path: string, params: Record<string, string>): Promise<T> {
-  const url = new URL(`${API_BASE}${path}`);
-  url.searchParams.set("apiKey", env.oddsApiKey);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+async function getJson<T>(path: Endpoint, params: Record<string, string> = {}): Promise<T> {
+  const url = oddsApiUrl(path, env.oddsApiKey, params);
 
   const response = await fetch(url, {
     cache: "no-store",
@@ -73,9 +71,9 @@ async function getJson<T>(path: string, params: Record<string, string>): Promise
   lastQuota = readQuota(response);
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
+    const body = readableError(await response.text().catch(() => ""));
     throw new OddsApiError(
-      `The Odds API returned ${response.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
+      `The Odds API returned ${response.status}${body ? `: ${body}` : ""}`,
       response.status,
     );
   }
@@ -102,7 +100,7 @@ export async function probeOddsFeed(): Promise<{
   }
 
   try {
-    await getJson<unknown[]>("/sports", {});
+    await getJson<unknown[]>(ENDPOINTS.sports);
     const quota = lastKnownQuota();
     return {
       ok: true,
@@ -147,7 +145,7 @@ export async function refreshOdds(): Promise<SyncResult> {
 
   let events: OddsEvent[];
   try {
-    events = await getJson<OddsEvent[]>("/odds", {
+    events = await getJson<OddsEvent[]>(ENDPOINTS.odds, {
       regions: "us",
       markets: "spreads",
       oddsFormat: "american",
@@ -272,13 +270,13 @@ export async function refreshScores(daysFrom = 3): Promise<SyncResult> {
   // games in progress and those that finished very recently.
   let events: ScoreEvent[];
   try {
-    events = await getJson<ScoreEvent[]>("/scores", {
+    events = await getJson<ScoreEvent[]>(ENDPOINTS.scores, {
       daysFrom: String(daysFrom),
       dateFormat: "iso",
     });
   } catch (first) {
     try {
-      events = await getJson<ScoreEvent[]>("/scores", { dateFormat: "iso" });
+      events = await getJson<ScoreEvent[]>(ENDPOINTS.scores, { dateFormat: "iso" });
     } catch {
       // Report the original failure: it describes the request we wanted.
       return { ...result, ok: false, error: describe(first) };
