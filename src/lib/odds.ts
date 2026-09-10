@@ -158,44 +158,67 @@ export async function refreshOdds(): Promise<SyncResult> {
   const preferred = env.oddsApiBookmakers;
   const now = new Date().toISOString();
 
+  type GameRow = {
+    id: string;
+    week_id: string;
+    home_team: string;
+    away_team: string;
+    odds_api_event_id: string | null;
+    spread_frozen_at: string | null;
+    spread_locked_at: string | null;
+  };
+
+  // One read up front instead of several per game. A sixteen game slate was
+  // making close to a hundred sequential round trips, which alone can outlast
+  // a serverless function's time limit.
+  const horizon = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const known =
+    unwrap<GameRow[]>(
+      await db()
+        .from("games")
+        .select(
+          "id, week_id, home_team, away_team, odds_api_event_id, spread_frozen_at, spread_locked_at",
+        )
+        .gte("kickoff_time", horizon),
+    ) ?? [];
+
+  const byEvent = new Map<string, GameRow>();
+  const byMatchup = new Map<string, GameRow>();
+  for (const game of known) {
+    if (game.odds_api_event_id) byEvent.set(game.odds_api_event_id, game);
+    byMatchup.set(`${game.week_id}|${game.away_team}|${game.home_team}`, game);
+  }
+
+  // Weeks repeat across every game of a slate, so resolve each one once.
+  const weekCache = new Map<string, string>();
+  const weekIdFor = async (kickoff: Date): Promise<string> => {
+    const { seasonYear, weekNumber } = weekForKickoff(kickoff);
+    const key = `${seasonYear}-${weekNumber}`;
+    const cached = weekCache.get(key);
+    if (cached) return cached;
+    const week = await ensureWeek(seasonYear, weekNumber);
+    weekCache.set(key, week.id);
+    return week.id;
+  };
+
   for (const event of events) {
     result.gamesSeen += 1;
     const kickoff = new Date(event.commence_time);
     if (Number.isNaN(kickoff.getTime())) continue;
 
     const line = extractHomeSpread(event, preferred);
-
-    type GameRow = {
-      id: string;
-      spread_frozen_at: string | null;
-      spread_locked_at: string | null;
-    };
-    const columns = "id, spread_frozen_at, spread_locked_at";
-
-    let existing = unwrap<GameRow | null>(
-      await db().from("games").select(columns).eq("odds_api_event_id", event.id).maybeSingle(),
-    );
+    let existing = byEvent.get(event.id) ?? null;
 
     if (!existing) {
-      const { seasonYear, weekNumber } = weekForKickoff(kickoff);
-      const week = await ensureWeek(seasonYear, weekNumber);
+      const weekId = await weekIdFor(kickoff);
 
       // The game may already be here without an event id, put there by a
       // Claude pull or entered by hand. Adopt it: inserting a second copy
       // would double the slate, and a game with no event id can never be
       // matched by the scores feed, so its picks would never grade.
-      const orphan = unwrap<GameRow | null>(
-        await db()
-          .from("games")
-          .select(columns)
-          .eq("week_id", week.id)
-          .eq("home_team", event.home_team)
-          .eq("away_team", event.away_team)
-          .is("odds_api_event_id", null)
-          .maybeSingle(),
-      );
+      const orphan = byMatchup.get(`${weekId}|${event.away_team}|${event.home_team}`);
 
-      if (orphan) {
+      if (orphan && !orphan.odds_api_event_id) {
         const link = await db()
           .from("games")
           .update({ odds_api_event_id: event.id })
@@ -204,30 +227,29 @@ export async function refreshOdds(): Promise<SyncResult> {
           .select("id");
         if (!link.error) {
           result.gamesAdopted = (result.gamesAdopted ?? 0) + 1;
+          orphan.odds_api_event_id = event.id;
           existing = orphan;
         }
       }
-    }
 
-    if (!existing) {
-      const { seasonYear, weekNumber } = weekForKickoff(kickoff);
-      const week = await ensureWeek(seasonYear, weekNumber);
-      const insert = await db()
-        .from("games")
-        .insert({
-          week_id: week.id,
-          home_team: event.home_team,
-          away_team: event.away_team,
-          kickoff_time: kickoff.toISOString(),
-          home_spread: line?.spread ?? null,
-          spread_source: line?.source ?? null,
-          spread_updated_at: line ? now : null,
-          odds_api_event_id: event.id,
-        })
-        .select("id");
-      // A duplicate means a concurrent run inserted it first; nothing to do.
-      if (!insert.error) result.gamesInserted += 1;
-      continue;
+      if (!existing) {
+        const insert = await db()
+          .from("games")
+          .insert({
+            week_id: weekId,
+            home_team: event.home_team,
+            away_team: event.away_team,
+            kickoff_time: kickoff.toISOString(),
+            home_spread: line?.spread ?? null,
+            spread_source: line?.source ?? null,
+            spread_updated_at: line ? now : null,
+            odds_api_event_id: event.id,
+          })
+          .select("id");
+        // A duplicate means a concurrent run inserted it first; nothing to do.
+        if (!insert.error) result.gamesInserted += 1;
+        continue;
+      }
     }
 
     // Frozen at kickoff, or locked by a deliberate pull: leave it alone.

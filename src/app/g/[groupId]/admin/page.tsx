@@ -13,6 +13,16 @@ import { AdminPanel } from "./AdminPanel";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Server actions inherit their time limit from the page that invokes them, and
+ * this page invokes the two slowest things in the app: a refresh that talks to
+ * an external feed, and a Claude pull that runs a web search. Vercel's default
+ * is 10 seconds on Hobby, which both can outlast -- the work finishes but the
+ * response never arrives, so the browser shows an error over a job that
+ * actually succeeded. 60 is the Hobby ceiling.
+ */
+export const maxDuration = 60;
+
 export default async function AdminPage({
   params,
   searchParams,
