@@ -6,6 +6,10 @@ export type RefreshResult = {
   ok: boolean;
   /** Odds feed problems. These degrade the run without changing stored data. */
   degraded: string[];
+  /** The spreads pull specifically. Null means it worked. */
+  oddsError: string | null;
+  /** The scores pull specifically. Null means it worked. */
+  scoresError: string | null;
   /** A database failure, which is a real outage rather than a soft degrade. */
   databaseError: string | null;
   frozen: number | null;
@@ -30,6 +34,8 @@ export async function runRefresh(): Promise<RefreshResult> {
   const result: RefreshResult = {
     ok: true,
     degraded: [],
+    oddsError: null,
+    scoresError: null,
     databaseError: null,
     frozen: null,
     gamesInserted: 0,
@@ -51,12 +57,18 @@ export async function runRefresh(): Promise<RefreshResult> {
   const odds = await refreshOdds();
   result.gamesInserted = odds.gamesInserted;
   result.spreadsUpdated = odds.spreadsUpdated;
-  if (odds.error) result.degraded.push(odds.error);
+  if (odds.error) {
+    result.oddsError = odds.error;
+    result.degraded.push(odds.error);
+  }
 
   // 3. Pull scores for games in progress or recently finished.
   const scores = await refreshScores();
   result.scoresUpdated = scores.scoresUpdated;
-  if (scores.error) result.degraded.push(scores.error);
+  if (scores.error) {
+    result.scoresError = scores.error;
+    result.degraded.push(scores.error);
+  }
 
   // 4. Regrade every pick on a resolved game.
   try {

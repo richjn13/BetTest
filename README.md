@@ -329,6 +329,20 @@ One thing worth knowing: **changing this later does not rewrite history.** A
 spread that has already frozen at kickoff keeps the number it was graded
 against, whichever book supplied it.
 
+### Scores on the free plan
+
+Spreads and scores are two different endpoints, and they are not restricted the
+same way. Looking up games that have already finished counts as historical data,
+which The Odds API limits to paid plans. The app asks for three days of results,
+falls back to a plain request when that is refused, and reports the two pulls
+separately, so a free-plan restriction on scores never presents as a failure to
+fetch spreads.
+
+The practical effect on a free plan: **spreads work, results may lag.** Enter a
+final score by hand under Admin → Games when they do. Saving a score there
+regrades every pick on that game immediately, so the leaderboard is correct
+either way.
+
 ## 10. Check the weekly job
 
 Open your Vercel project → **Settings** → **Cron Jobs**. You should see one
@@ -452,7 +466,10 @@ current pricing page before moving to anything hourly, since tier sizes change.
 # Troubleshooting
 
 **Start here: open your app's URL with `/setup` on the end.** It checks every
-environment variable and every database table and names what is wrong. Most of
+environment variable, every database table, and the odds feed itself, and names
+what is wrong. Checking the odds key costs nothing: it uses an endpoint that
+does not count against your monthly allowance, and it reports how many calls
+you have left. Most of
 the rows below are things it will find for you.
 
 | What you see | What it means |
@@ -467,7 +484,9 @@ the rows below are things it will find for you.
 | The SQL ran but only some tables appeared | The run stopped partway. Run `supabase/reset.sql`, then `0001_init.sql` again. Reset deletes everything, so only on a database with nothing worth keeping. |
 | Picks tab says "No games yet" | Expected on a fresh database. Add a game by hand (step 8) or run the odds refresh (step 9). |
 | A game will not accept a pick | Its kickoff has passed. That is the rule working. Use Admin → Picks to edit a pick after kickoff. |
-| Odds refresh says `401` or `Usage quota` | The key is wrong, was set without redeploying, or the monthly quota is spent. |
+| Odds refresh says `401` | The key is wrong, or it was set in Vercel without redeploying afterwards. `/setup` checks the key directly and says which. |
+| Odds refresh mentions scores but the spreads came through | Expected on the free plan. The scores endpoint restricts finished-game lookups to paid plans, so results can lag. Enter a final score by hand under Admin → Games, or upgrade. The spreads are unaffected. |
+| Odds refresh says `Usage quota` | The monthly allowance is spent. `/setup` shows how many calls remain. |
 | Leaderboard shows 0 after a game is final | Grading runs on the weekly pass or when an admin saves a score override. Press Admin → Refresh odds and scores now. |
 | Cron job never appears in Vercel | `vercel.json` has to be on the deployed branch. Cron jobs register on deploy, not on save. |
 | Everyone got signed out | `SESSION_SECRET` changed. Harmless — sign back in with join code, username and PIN. |

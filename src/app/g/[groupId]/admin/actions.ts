@@ -329,11 +329,18 @@ export async function syncOddsAction(
     const summary = summarize(result);
 
     if (result.databaseError) throw new Error(result.databaseError);
-    if (result.degraded.length > 0) {
-      // Not a failure: stored spreads are untouched, so members still see the
-      // last known line.
-      throw new AppError(
-        `${summary} The odds feed had trouble: ${result.degraded.join("; ")}`,
+
+    // Only a failed spreads pull is worth calling a failure. Scores are a
+    // separate endpoint with its own plan restrictions, and a pool that has its
+    // lines can still be picked and can still be scored by hand.
+    if (result.oddsError) {
+      throw new AppError(`Couldn't fetch spreads: ${result.oddsError}`);
+    }
+    if (result.scoresError) {
+      return (
+        `${summary} Spreads are current. Scores were unavailable ` +
+        `(${result.scoresError}), so results may lag -- you can enter a final ` +
+        `score by hand under Games.`
       );
     }
     return summary;

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { probeOddsFeed } from "@/lib/odds";
 
 export const dynamic = "force-dynamic";
 
@@ -169,6 +170,43 @@ async function checkDatabase(): Promise<Check[]> {
   return checks;
 }
 
+/**
+ * Checks the odds feed. The /sports endpoint this uses does not count against
+ * the monthly quota, so opening this page as often as you like costs nothing.
+ */
+async function checkOddsFeed(): Promise<Check[]> {
+  const key = checkPresence("ODDS_API_KEY", true);
+  if (key.status !== "ok") {
+    return [
+      key,
+      {
+        label: "The Odds API",
+        status: "warn",
+        detail: "Not checked, because no key is set. Games can still be added by hand.",
+      },
+    ];
+  }
+
+  try {
+    const probe = await probeOddsFeed();
+    const low =
+      probe.quota.remaining !== null && probe.quota.remaining < 20 ? "warn" : "ok";
+    return [
+      key,
+      {
+        label: "The Odds API",
+        status: probe.ok ? (low as Status) : "fail",
+        detail: probe.message,
+      },
+    ];
+  } catch (error) {
+    return [
+      key,
+      { label: "The Odds API", status: "fail", detail: describe(error) },
+    ];
+  }
+}
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -203,11 +241,10 @@ export default async function SetupPage() {
     checkServiceRoleKey(),
     checkPresence("SESSION_SECRET"),
     checkPresence("CRON_SECRET"),
-    checkPresence("ODDS_API_KEY", true),
   ];
 
-  const database = await checkDatabase();
-  const all = [...config, ...database];
+  const [database, oddsFeed] = await Promise.all([checkDatabase(), checkOddsFeed()]);
+  const all = [...config, ...database, ...oddsFeed];
   const failing = all.filter((check) => check.status === "fail").length;
 
   return (
@@ -247,10 +284,20 @@ export default async function SetupPage() {
         ))}
       </ul>
 
+      <h2 className="mt-8 text-sm font-semibold uppercase tracking-wide text-muted">
+        Odds feed
+      </h2>
+      <ul className="card mt-2 px-4">
+        {oddsFeed.map((check) => (
+          <CheckRow key={check.label} check={check} />
+        ))}
+      </ul>
+
       <p className="mt-6 text-xs text-muted">
         A missing table means the schema script did not finish. Run
         supabase/migrations/0001_init.sql again in the Supabase SQL editor; it is
-        safe to run twice.
+        safe to run twice. A rejected odds key usually means it was set in Vercel
+        without redeploying afterwards.
       </p>
     </main>
   );

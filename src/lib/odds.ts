@@ -25,6 +25,39 @@ export type SyncResult = {
 
 // ------------------------------------------------------------------ fetch
 
+/** An Odds API failure, carrying the status so callers can react to it. */
+export class OddsApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "OddsApiError";
+  }
+}
+
+/** The quota counters The Odds API returns on every response. */
+export type Quota = { remaining: number | null; used: number | null };
+
+function readQuota(response: Response): Quota {
+  const toNumber = (value: string | null) => {
+    if (value === null) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return {
+    remaining: toNumber(response.headers.get("x-requests-remaining")),
+    used: toNumber(response.headers.get("x-requests-used")),
+  };
+}
+
+let lastQuota: Quota = { remaining: null, used: null };
+
+/** Quota counters from the most recent call this process made. */
+export function lastKnownQuota(): Quota {
+  return lastQuota;
+}
+
 async function getJson<T>(path: string, params: Record<string, string>): Promise<T> {
   const url = new URL(`${API_BASE}${path}`);
   url.searchParams.set("apiKey", env.oddsApiKey);
@@ -35,13 +68,61 @@ async function getJson<T>(path: string, params: Record<string, string>): Promise
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
+  lastQuota = readQuota(response);
+
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(
+    throw new OddsApiError(
       `The Odds API returned ${response.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
+      response.status,
     );
   }
   return (await response.json()) as T;
+}
+
+/**
+ * Checks the key without spending quota. The /sports endpoint is free, so this
+ * can be called from a diagnostics page as often as you like.
+ */
+export async function probeOddsFeed(): Promise<{
+  ok: boolean;
+  status: number | null;
+  message: string;
+  quota: Quota;
+}> {
+  if (!process.env.ODDS_API_KEY) {
+    return {
+      ok: false,
+      status: null,
+      message: "No key set. The odds feed is off until you add one.",
+      quota: { remaining: null, used: null },
+    };
+  }
+
+  try {
+    await getJson<unknown[]>("/sports", {});
+    const quota = lastKnownQuota();
+    return {
+      ok: true,
+      status: 200,
+      message:
+        quota.remaining === null
+          ? "The key works."
+          : `The key works. ${quota.remaining} of your monthly calls remain.`,
+      quota,
+    };
+  } catch (error) {
+    const status = error instanceof OddsApiError ? error.status : null;
+    return {
+      ok: false,
+      status,
+      message:
+        status === 401
+          ? "The key was rejected. Check for a typo, and that you redeployed after setting it."
+          : describe(error),
+      quota: lastKnownQuota(),
+    };
+  }
 }
 
 // ------------------------------------------------------------------- sync
@@ -146,14 +227,23 @@ export async function refreshScores(daysFrom = 3): Promise<SyncResult> {
     scoresUpdated: 0,
   };
 
+  // daysFrom asks for games that already finished, which The Odds API treats as
+  // historical data and restricts to paid plans. On a free plan that request is
+  // rejected, so fall back to the unparameterized call, which still returns
+  // games in progress and those that finished very recently.
   let events: ScoreEvent[];
   try {
     events = await getJson<ScoreEvent[]>("/scores", {
       daysFrom: String(daysFrom),
       dateFormat: "iso",
     });
-  } catch (error) {
-    return { ...result, ok: false, error: describe(error) };
+  } catch (first) {
+    try {
+      events = await getJson<ScoreEvent[]>("/scores", { dateFormat: "iso" });
+    } catch {
+      // Report the original failure: it describes the request we wanted.
+      return { ...result, ok: false, error: describe(first) };
+    }
   }
 
   for (const event of events) {
