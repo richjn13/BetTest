@@ -211,6 +211,13 @@ Tap at the end of the field and check.
 When it finishes you get a URL like `bettest-abc123.vercel.app`. Open it. You
 should land on the join screen.
 
+**If anything goes wrong, add `/setup` to that URL.** The setup check tells you
+which environment variables are missing, whether you pasted the anon key instead
+of the service role key, whether a value picked up a stray space, and whether all
+seven database tables are there. It never shows a secret value, and it works even
+when the rest of the app is throwing. It is faster than reading Vercel's logs,
+and much faster on an iPad.
+
 ## 7. Add it to your Home Screen
 
 The app is built mobile-first, and it is much nicer as an icon than a tab.
@@ -404,10 +411,16 @@ current pricing page before moving to anything hourly, since tier sizes change.
 
 # Troubleshooting
 
+**Start here: open your app's URL with `/setup` on the end.** It checks every
+environment variable and every database table and names what is wrong. Most of
+the rows below are things it will find for you.
+
 | What you see | What it means |
 | --- | --- |
+| `Application error: a server-side exception has occurred` with a digest number | Something threw on the server. Open `/setup` first — on a new deployment this is nearly always a missing or mistyped variable. If `/setup` is clean, search the digest in your Vercel project's Logs tab for the real message. |
 | The Vercel build failed | Open the deployment and read the log. A missing environment variable does not fail the build, so it is usually something else. |
-| The app loads but creating a group hangs or errors | Almost always the `anon` key was pasted instead of `service_role`. Recheck step 4, then redeploy. |
+| The app loads but creating a group hangs or errors | Almost always the `anon` key was pasted instead of `service_role`. `/setup` decodes the key and tells you which one you pasted. |
+| The join screen works, then everything breaks after you create a group | Usually a missing `SESSION_SECRET`. The join screen does not read it, but every page does once you have a session cookie. `/setup` will show it. |
 | `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |
 | `relation "groups" does not exist` | The SQL from step 2 did not run. Open Supabase's Table Editor and confirm the seven tables are there. |
 | The SQL ran but only some tables appeared | The run stopped partway. Run `supabase/reset.sql`, then `0001_init.sql` again. Reset deletes everything, so only on a database with nothing worth keeping. |
@@ -473,6 +486,7 @@ npm run build
 ```
 src/lib/            scoring, grading, odds parsing, session, database access
 src/lib/refresh.ts  the maintenance pass shared by cron and the admin button
+src/app/setup       configuration check, reachable without signing in
 src/app/join        create a group, join one, or sign in
 src/app/g/[id]      picks board, leaderboard, admin panel
 src/app/api/cron    the scheduled refresh endpoint
