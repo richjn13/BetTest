@@ -14,6 +14,24 @@ function required(name: string): string {
   return value;
 }
 
+/**
+ * Required variables checked in one pass, for use before any work that writes
+ * to the database. Returns the names that are missing or have whitespace on
+ * either end, which is what a value pasted on a touchscreen often picks up.
+ */
+export function missingConfiguration(): string[] {
+  const problems: string[] = [];
+  for (const name of [
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SESSION_SECRET",
+  ]) {
+    const value = process.env[name];
+    if (!value || value !== value.trim()) problems.push(name);
+  }
+  return problems;
+}
+
 export const env = {
   get supabaseUrl() {
     return required("SUPABASE_URL");

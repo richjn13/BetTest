@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { missingConfiguration } from "@/lib/env";
 import { AppError, createGroup, joinGroup, signIn } from "@/lib/queries";
 import { addMembership } from "@/lib/session";
 
@@ -22,10 +23,28 @@ function validate(username: string, pin: string): string | null {
   return null;
 }
 
-/** Server actions surface AppError to the member and hide anything else. */
+/**
+ * Runs one of the three flows and turns whatever happens into something the
+ * form can show.
+ *
+ * The configuration check comes first, before any database write. Signing the
+ * session cookie needs SESSION_SECRET, and that happens after the group and
+ * user rows exist -- so without this check a misconfigured deployment would
+ * create a group, fail to sign anyone into it, and leave an orphan behind on
+ * every retry.
+ */
 async function attempt(
   work: () => Promise<{ group: { id: string }; user: { id: string } }>,
 ): Promise<FormState | never> {
+  const missing = missingConfiguration();
+  if (missing.length > 0) {
+    return {
+      error:
+        `This deployment is missing ${missing.join(", ")}. ` +
+        "Open /setup for the details. Nothing was saved.",
+    };
+  }
+
   let destination: string;
   try {
     const { group, user } = await work();
@@ -33,8 +52,12 @@ async function attempt(
     destination = `/g/${group.id}/picks`;
   } catch (error) {
     if (error instanceof AppError) return { error: error.message };
+    // Anything else is a bug or an outage. Say what it was: this is a private
+    // pool, the message comes from Postgres rather than from user data, and a
+    // blank "something went wrong" cannot be acted on.
     console.error(error);
-    return { error: "Something went wrong. Try again." };
+    const reason = error instanceof Error ? error.message : String(error);
+    return { error: `Couldn't finish that: ${reason}. Open /setup to check.` };
   }
   // redirect throws, so it has to happen outside the try block.
   redirect(destination);

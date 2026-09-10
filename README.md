@@ -419,6 +419,7 @@ the rows below are things it will find for you.
 | --- | --- |
 | `Application error: a server-side exception has occurred` with a digest number | Something threw on the server. Open `/setup` first — on a new deployment this is nearly always a missing or mistyped variable. If `/setup` is clean, search the digest in your Vercel project's Logs tab for the real message. |
 | The Vercel build failed | Open the deployment and read the log. A missing environment variable does not fail the build, so it is usually something else. |
+| `This deployment is missing ...` on the join form | Exactly what it says. Those variables are unset in Vercel, or have a stray space. Nothing was saved. Fix them, redeploy, try again. |
 | The app loads but creating a group hangs or errors | Almost always the `anon` key was pasted instead of `service_role`. `/setup` decodes the key and tells you which one you pasted. |
 | The join screen works, then everything breaks after you create a group | Usually a missing `SESSION_SECRET`. The join screen does not read it, but every page does once you have a session cookie. `/setup` will show it. |
 | `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |
@@ -477,7 +478,7 @@ step 3. Apply the schema by pasting
 step 2 describes.
 
 ```bash
-npm test        # 31 tests
+npm test        # 36 tests
 npm run build
 ```
 
