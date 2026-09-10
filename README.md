@@ -174,24 +174,14 @@ Treat the service role key like a password. It bypasses all database security.
 It should only ever live in Vercel's environment settings, never in a file you
 commit to GitHub.
 
-## 5. Put the code on your main branch
+## 5. Nothing to do here
 
-The app was built on a branch. Vercel deploys your `main` branch by default, so
-merge the branch in first. All of this is on github.com in Safari:
+This repository has one branch, `claude/nfl-pickem-build-spec-jnc1yo`, and it is
+the default branch. There is no `main` to merge into, and nothing to merge.
+Vercel deploys the default branch, so pushes land automatically.
 
-1. Open the repository, then tap **Pull requests** → **New pull request**.
-2. Set **base** to `main` and **compare** to
-   `claude/nfl-pickem-build-spec-jnc1yo`.
-3. Tap **Create pull request**, then **Create pull request** again to confirm.
-4. Tap **Merge pull request**, then **Confirm merge**.
-
-Future changes land on that same branch, and you repeat this merge to publish
-them.
-
-*Alternative, if you would rather not merge:* deploy the branch directly by
-setting Vercel's **Settings → Git → Production Branch** to the branch name after
-step 6, then redeploying. Merging is simpler to live with, because `main` then
-always means what is live.
+If you later add a `main` and want that to be what ships, change **Settings →
+Git → Production Branch** in Vercel to match.
 
 ## 6. Deploy on Vercel
 
@@ -423,15 +413,20 @@ Details of what it does and when are in *The weekly refresh* below.
 
 # Changing things later, from the iPad
 
-**To change settings**, use the Vercel dashboard. Environment variables live in
-Settings → Environment Variables, and every change needs a redeploy from the
-Deployments tab.
+**Two kinds of change, and they behave differently.** This trips people up:
+
+| What changed | What you do |
+| --- | --- |
+| Code | Nothing. The push deploys itself in a minute or two. |
+| An environment variable | Redeploy by hand: Deployments tab → **⋯** on the newest one → **Redeploy**. A variable change does not trigger a deploy on its own. |
+
+Environment variables live in Vercel under Settings → Environment Variables.
 
 **To change the code**, you have two options:
 
 - **Ask Claude.** Describe what you want in a Claude Code session on this
-  repository. Changes get pushed to the working branch, and you merge them the
-  same way as step 5.
+  repository. Changes are pushed to the branch Vercel deploys, so a new version
+  goes live on its own within a couple of minutes. Nothing to merge.
 - **Edit on GitHub.** Open a file on github.com, tap the pencil icon, edit, and
   tap **Commit changes**. Fine for a one-line tweak like a cron schedule.
   Committing to `main` deploys automatically within a couple of minutes.
@@ -563,6 +558,7 @@ the rows below are things it will find for you.
 | Odds refresh says `Usage quota` | The monthly allowance is spent. `/setup` shows how many calls remain. |
 | Leaderboard shows 0 after a game is final | Grading runs on the weekly pass or when an admin saves a score override. Press Admin → Refresh odds and scores now. |
 | Cron job never appears in Vercel | `vercel.json` has to be on the deployed branch. Cron jobs register on deploy, not on save. |
+| A fix was pushed but the app has not changed | Check the Deployments tab. Code pushes deploy on their own; if the newest deployment is older than the push, open it and read the build log. |
 | Everyone got signed out | `SESSION_SECRET` changed. Harmless — sign back in with join code, username and PIN. |
 | A Supabase button will not tap | Safari's **aA** menu → **Request Desktop Website**. |
 
