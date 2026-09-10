@@ -9,7 +9,7 @@
  * Kept free of server imports so the rules can be tested directly.
  */
 import { NFL_TEAMS } from "./teams";
-import { seasonStartUtc } from "./nfl-week";
+import { weekForKickoff } from "./nfl-week";
 
 export type ProposedGame = {
   awayTeam: string;
@@ -32,8 +32,6 @@ export type PullResult = {
 const TEAMS_BY_LOWER = new Map(NFL_TEAMS.map((team) => [team.toLowerCase(), team]));
 /** Beyond this, a line is a transcription error rather than a real number. */
 const MAX_PLAUSIBLE_SPREAD = 30;
-/** How far from the week's nominal start a kickoff may sit, in days. */
-const WEEK_WINDOW_DAYS = 8;
 
 function resolveTeam(name: unknown): string | null {
   if (typeof name !== "string") return null;
@@ -53,8 +51,6 @@ export function validate(
   }
   result.source = typeof payload.source === "string" ? payload.source : null;
 
-  const weekStart = seasonStartUtc(seasonYear) + (weekNumber - 1) * 7 * 86_400_000;
-  const windowMs = WEEK_WINDOW_DAYS * 86_400_000;
   const seen = new Set<string>();
 
   for (const raw of payload.games) {
@@ -77,9 +73,14 @@ export function validate(
       result.rejected.push(`${label}: kickoff time could not be read`);
       continue;
     }
-    if (Math.abs(kickoff.getTime() - weekStart) > windowMs) {
+    // Ask the same function that assigns every other game its week. A fixed
+    // day window around the week's nominal start would reject the Super Bowl,
+    // which sits two weeks out because of the bye before it.
+    const placed = weekForKickoff(kickoff, seasonYear);
+    if (placed.weekNumber !== weekNumber) {
       result.rejected.push(
-        `${label}: kickoff ${kickoff.toISOString().slice(0, 10)} is outside week ${weekNumber}`,
+        `${label}: kickoff ${kickoff.toISOString().slice(0, 10)} lands in week ` +
+          `${placed.weekNumber}, not week ${weekNumber}`,
       );
       continue;
     }

@@ -83,9 +83,10 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are two files to run, in order:** `supabase/migrations/0001_init.sql`
-then `supabase/migrations/0002_locked_lines.sql`. Do the first one now and come
-back for the second.
+**There are three files to run, in order**, all in `supabase/migrations/`:
+`0001_init.sql`, then `0002_locked_lines.sql`, then
+`0003_one_game_per_matchup.sql`. Do the first one now and come back for the
+others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -110,8 +111,9 @@ To confirm, open **Table Editor** in the sidebar. You should see seven tables:
 `groups`, `users`, `weeks`, `games`, `picks`, `point_adjustments`, and
 `admin_actions`.
 
-Now repeat the same copy-and-run for `supabase/migrations/0002_locked_lines.sql`,
-which adds one column used by the Claude line pull.
+Now repeat the same copy-and-run for `0002_locked_lines.sql`, which adds one
+column used by the Claude line pull, and then `0003_one_game_per_matchup.sql`,
+which stops the same game being created twice in a week.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
@@ -336,6 +338,24 @@ slate list underneath is worth a glance before anyone picks.
 Cost is small. One pull is a search plus a page or two of reasoning, so a weekly
 pull runs on the order of a dollar or two a month.
 
+### How a pulled game gets scored
+
+Games can arrive from three places: the Claude pull, the odds feed, and hand
+entry under Admin → Games. Scores arrive from one, the odds feed, and it
+recognizes a game by the event id it assigned. A game created by a Claude pull
+has no such id.
+
+So the feed **adopts** rather than duplicates. When it sees a game it does not
+recognize, it looks for the same matchup already sitting in that week without an
+event id, and links the two. From then on that game receives scores normally,
+and its line is left alone because the pull locked it. The refresh summary says
+how many it linked.
+
+The practical consequence: **if you use the Claude pull, keep `ODDS_API_KEY` set
+too.** The pull gives you the lines you want and the feed quietly supplies the
+results. Without the feed nothing scores automatically, and you enter finals by
+hand under Admin → Games, which regrades that game's picks immediately.
+
 ### Which sportsbook the spreads come from
 
 The Odds API returns the same game priced by a dozen or more sportsbooks, and
@@ -521,6 +541,8 @@ the rows below are things it will find for you.
 | `This deployment is missing ...` on the join form | Exactly what it says. Those variables are unset in Vercel, or have a stray space. Nothing was saved. Fix them, redeploy, try again. |
 | The app loads but creating a group hangs or errors | Almost always the `anon` key was pasted instead of `service_role`. `/setup` decodes the key and tells you which one you pasted. |
 | The join screen works, then everything breaks after you create a group | Usually a missing `SESSION_SECRET`. The join screen does not read it, but every page does once you have a session cookie. `/setup` will show it. |
+| The same game appears twice in a week | Delete the extra under Admin → Games, then run `0003_one_game_per_matchup.sql` again. It refuses to build its index while duplicates exist and tells you so. |
+| A pulled game never gets a score | It was never linked to the odds feed. Set `ODDS_API_KEY` and press refresh, which adopts it, or enter the final by hand under Admin → Games. |
 | Pull lines with Claude says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
 | The pull times out | Vercel's Hobby plan caps a function at 60 seconds and a search-backed pull can exceed that. Pull a single week at a time, or move to Pro, or use the paste-free fallback of adding games by hand. |
 | `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |

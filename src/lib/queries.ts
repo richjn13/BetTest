@@ -319,7 +319,15 @@ export async function applyLockedLines(
     const match = byMatchup.get(`${game.awayTeam}@${game.homeTeam}`);
 
     if (match) {
-      if (match.spread_frozen_at) {
+      // Frozen, already under way, or already resolved: leave it alone. Only
+      // spread_frozen_at is set by the scheduled freeze, so a game that
+      // reached kickoff before any run happened would otherwise have its line
+      // and kickoff rewritten by a re-pull.
+      if (
+        match.spread_frozen_at ||
+        match.status !== "scheduled" ||
+        new Date(match.kickoff_time).getTime() <= Date.now()
+      ) {
         counts.skippedFrozen += 1;
         continue;
       }

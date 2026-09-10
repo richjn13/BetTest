@@ -15,6 +15,8 @@ const REQUEST_TIMEOUT_MS = 10_000;
 
 export type SyncResult = {
   ok: boolean;
+  /** Games already present with no event id, now linked to the feed. */
+  gamesAdopted?: number;
   /** Why the run degraded, if it did. The last known spread stays on screen. */
   error?: string;
   gamesSeen: number;
@@ -165,13 +167,49 @@ export async function refreshOdds(): Promise<SyncResult> {
 
     const line = extractHomeSpread(event, preferred);
 
-    const existing = unwrap(
-      await db()
-        .from("games")
-        .select("id, spread_frozen_at, spread_locked_at")
-        .eq("odds_api_event_id", event.id)
-        .maybeSingle(),
-    ) as { id: string; spread_frozen_at: string | null; spread_locked_at: string | null } | null;
+    type GameRow = {
+      id: string;
+      spread_frozen_at: string | null;
+      spread_locked_at: string | null;
+    };
+    const columns = "id, spread_frozen_at, spread_locked_at";
+
+    let existing = unwrap<GameRow | null>(
+      await db().from("games").select(columns).eq("odds_api_event_id", event.id).maybeSingle(),
+    );
+
+    if (!existing) {
+      const { seasonYear, weekNumber } = weekForKickoff(kickoff);
+      const week = await ensureWeek(seasonYear, weekNumber);
+
+      // The game may already be here without an event id, put there by a
+      // Claude pull or entered by hand. Adopt it: inserting a second copy
+      // would double the slate, and a game with no event id can never be
+      // matched by the scores feed, so its picks would never grade.
+      const orphan = unwrap<GameRow | null>(
+        await db()
+          .from("games")
+          .select(columns)
+          .eq("week_id", week.id)
+          .eq("home_team", event.home_team)
+          .eq("away_team", event.away_team)
+          .is("odds_api_event_id", null)
+          .maybeSingle(),
+      );
+
+      if (orphan) {
+        const link = await db()
+          .from("games")
+          .update({ odds_api_event_id: event.id })
+          .eq("id", orphan.id)
+          .is("odds_api_event_id", null)
+          .select("id");
+        if (!link.error) {
+          result.gamesAdopted = (result.gamesAdopted ?? 0) + 1;
+          existing = orphan;
+        }
+      }
+    }
 
     if (!existing) {
       const { seasonYear, weekNumber } = weekForKickoff(kickoff);

@@ -14,6 +14,8 @@ export type RefreshResult = {
   databaseError: string | null;
   frozen: number | null;
   gamesInserted: number;
+  /** Games already present with no event id, now linked to the feed. */
+  gamesAdopted: number;
   spreadsUpdated: number;
   scoresUpdated: number;
   graded: number | null;
@@ -39,6 +41,7 @@ export async function runRefresh(): Promise<RefreshResult> {
     databaseError: null,
     frozen: null,
     gamesInserted: 0,
+    gamesAdopted: 0,
     spreadsUpdated: 0,
     scoresUpdated: 0,
     graded: null,
@@ -56,6 +59,7 @@ export async function runRefresh(): Promise<RefreshResult> {
   // 2. Pull current spreads and any newly scheduled games.
   const odds = await refreshOdds();
   result.gamesInserted = odds.gamesInserted;
+  result.gamesAdopted = odds.gamesAdopted ?? 0;
   result.spreadsUpdated = odds.spreadsUpdated;
   if (odds.error) {
     result.oddsError = odds.error;
@@ -85,7 +89,9 @@ export async function runRefresh(): Promise<RefreshResult> {
 /** A one-line summary for the admin panel. */
 export function summarize(result: RefreshResult): string {
   return (
-    `${result.gamesInserted} new games, ${result.spreadsUpdated} spreads, ` +
+    `${result.gamesInserted} new games, ` +
+    (result.gamesAdopted > 0 ? `${result.gamesAdopted} linked to the feed, ` : "") +
+    `${result.spreadsUpdated} spreads, ` +
     `${result.scoresUpdated} scores, ${result.frozen ?? 0} lines frozen, ` +
     `${result.graded ?? 0} picks graded.`
   );

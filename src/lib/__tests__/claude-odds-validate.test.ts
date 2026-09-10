@@ -84,7 +84,57 @@ describe("validate", () => {
 
   it("rejects a kickoff belonging to another week", () => {
     const result = run([game({ kickoff_iso: kickoff(30) })]);
-    expect(result.rejected[0]).toContain("outside week 2");
+    expect(result.rejected[0]).toContain("not week 2");
+  });
+
+  it("accepts the Super Bowl, which sits two weeks past its nominal start", () => {
+    // The bye before the Super Bowl means a fixed day window around week 22's
+    // start rejects it. Validation asks weekForKickoff instead, which folds it
+    // back onto 22 exactly as the rest of the app does.
+    const result = validate(
+      {
+        games: [
+          {
+            away_team: "Kansas City Chiefs",
+            home_team: "Philadelphia Eagles",
+            kickoff_iso: "2026-02-08T23:30:00Z",
+            home_spread: -1.5,
+          },
+        ],
+        source: "DraftKings",
+      },
+      2025,
+      22,
+    );
+    expect(result.rejected).toEqual([]);
+    expect(result.games).toHaveLength(1);
+  });
+
+  it("accepts the earlier playoff rounds in their own weeks", () => {
+    const rounds: [string, number][] = [
+      ["2026-01-11T18:00:00Z", 19],
+      ["2026-01-18T18:00:00Z", 20],
+      ["2026-01-25T20:00:00Z", 21],
+    ];
+    for (const [iso, week] of rounds) {
+      const result = validate(
+        {
+          games: [
+            {
+              away_team: "Buffalo Bills",
+              home_team: "Kansas City Chiefs",
+              kickoff_iso: iso,
+              home_spread: -3,
+            },
+          ],
+          source: "DraftKings",
+        },
+        2025,
+        week,
+      );
+      expect(result.rejected).toEqual([]);
+      expect(result.games).toHaveLength(1);
+    }
   });
 
   it("keeps the first of a duplicated matchup and names the rest", () => {
