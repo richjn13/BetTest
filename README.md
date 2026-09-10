@@ -201,7 +201,12 @@ always means what is live.
 | `SESSION_SECRET` | `session_secret` from step 3 |
 | `CRON_SECRET` | `cron_secret` from step 3 |
 | `ODDS_API_KEY` | Leave the value empty for now |
-| `ODDS_API_BOOKMAKERS` | `draftkings,fanduel` |
+| `ODDS_API_BOOKMAKERS` | Type `draftkings,fanduel`, or skip this one entirely |
+
+`ODDS_API_BOOKMAKERS` is **not** something you fetch from anywhere. It is your
+own preference for whose line to use, and you just type it. Skipping it works
+fine. There is more on it under step 9 if you care which sportsbook the numbers
+come from.
 
 Watch for a trailing space when pasting on iPadOS — it sometimes tacks one on.
 Tap at the end of the field and check.
@@ -288,6 +293,41 @@ live spreads.
 If it reports a problem instead, the message names the cause. Nothing is damaged
 either way: a failed fetch changes no stored data, so whatever spreads you
 already had stay exactly as they were.
+
+### Which sportsbook the spreads come from
+
+The Odds API returns the same game priced by a dozen or more sportsbooks, and
+they rarely agree exactly. One might have the home team at &minus;3, another at
+&minus;3.5. Your pool needs one number, so the app picks one.
+
+`ODDS_API_BOOKMAKERS` is how you say whose line you prefer. It is a plain list
+you type yourself, not a credential and not something you look up in your
+account. It works like a ranked choice: the app walks your list in order and
+takes the first book that has posted a spread for that game. If none of them
+have, it falls back to whichever book the feed listed first, so you always get a
+line when one exists.
+
+**Leaving it blank is a perfectly good choice.** The app then just takes the
+first book the feed returns. For a friends' pool the difference between
+DraftKings and FanDuel on a given game is half a point on the occasional game,
+and it applies to everyone equally.
+
+If you do want to set it, these are the common keys, all lowercase, separated by
+commas with no spaces:
+
+```
+draftkings, fanduel, betmgm, betrivers, espnbet, fanatics, bovada, betonlineag
+```
+
+Sportsbooks come and go and occasionally rebrand, so that list ages. The
+authoritative version is the one in your own data: The Odds API returns a `key`
+for every book it prices a game with, and their documentation lists the current
+set. An unrecognized key is not an error — it simply never matches, and the app
+falls back as described above.
+
+One thing worth knowing: **changing this later does not rewrite history.** A
+spread that has already frozen at kickoff keeps the number it was graded
+against, whichever book supplied it.
 
 ## 10. Check the weekly job
 
