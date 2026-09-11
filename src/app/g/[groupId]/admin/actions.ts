@@ -15,10 +15,12 @@ import {
   deleteGame,
   ensureWeek,
   getGame,
+  getWeek,
   logAdminAction,
   regenerateJoinCode,
   removeUser,
   setAdmin,
+  setWeekClosed,
 } from "@/lib/queries";
 import type { GameStatus, Side } from "@/lib/types";
 
@@ -160,6 +162,39 @@ export async function removeUserAction(
     });
     await removeUser(groupId, userId);
     return `Removed ${username}. Their picks went with them.`;
+  });
+}
+
+/**
+ * Closes a week, or reopens one closed by mistake. A closed week accepts
+ * nothing: no line refresh, no pick, no re-pull.
+ */
+export async function setWeekClosedAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const weekId = text(form, "weekId");
+  const close = text(form, "close") === "true";
+
+  return run(groupId, async (actor) => {
+    if (!weekId) throw new AppError("Pick a week.");
+    const week = await getWeek(weekId);
+    if (!week) throw new AppError("That week no longer exists.");
+
+    await setWeekClosed(weekId, close);
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: close ? "close_week" : "reopen_week",
+      note: close ? `${week.label} finalised.` : `${week.label} reopened.`,
+      details: { week: week.label },
+    });
+
+    return close
+      ? `${week.label} is closed. Its lines, picks and results are now fixed.`
+      : `${week.label} is open again and will accept changes.`;
   });
 }
 

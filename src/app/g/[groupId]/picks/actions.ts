@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { requireViewer } from "@/lib/auth";
 import { AppError, clearLock, getGame, savePick, setLock } from "@/lib/queries";
 import type { Side } from "@/lib/types";
@@ -40,6 +39,7 @@ export async function pickAction(_previous: PickState, form: FormData): Promise<
     return { error: "Couldn't save that pick. Try again." };
   }
 
-  revalidatePath(`/g/${groupId}/picks`);
+  // Deliberately no revalidatePath: the board already shows the change, and
+  // re-rendering the page here is what made a tap take seconds.
   return { error: null };
 }

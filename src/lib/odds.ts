@@ -9,7 +9,7 @@ import {
   type ScoreEvent,
 } from "./odds-parse";
 import { ENDPOINTS, oddsApiUrl, readableError, type Endpoint } from "./odds-url";
-import { ensureWeek } from "./queries";
+import { listOpenedWeeks } from "./queries";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -17,6 +17,8 @@ export type SyncResult = {
   ok: boolean;
   /** Games already present with no event id, now linked to the feed. */
   gamesAdopted?: number;
+  /** Events skipped because their week has not been pulled, or is closed. */
+  gamesSkipped?: number;
   /** Why the run degraded, if it did. The last known spread stays on screen. */
   error?: string;
   gamesSeen: number;
@@ -189,28 +191,30 @@ export async function refreshOdds(): Promise<SyncResult> {
     byMatchup.set(`${game.week_id}|${game.away_team}|${game.home_team}`, game);
   }
 
-  // Weeks repeat across every game of a slate, so resolve each one once.
-  const weekCache = new Map<string, string>();
-  const weekIdFor = async (kickoff: Date): Promise<string> => {
-    const { seasonYear, weekNumber } = weekForKickoff(kickoff);
-    const key = `${seasonYear}-${weekNumber}`;
-    const cached = weekCache.get(key);
-    if (cached) return cached;
-    const week = await ensureWeek(seasonYear, weekNumber);
-    weekCache.set(key, week.id);
-    return week.id;
-  };
+  // Only weeks that have been deliberately pulled, and are not yet closed,
+  // may receive anything. This is what keeps next week's lines from appearing
+  // before you pull them, and what keeps a finished week finished.
+  const live = (await listOpenedWeeks()).filter((week) => week.closed_at === null);
+  const liveWeekIds = new Map(
+    live.map((week) => [`${week.season_year}-${week.week_number}`, week.id]),
+  );
 
   for (const event of events) {
     result.gamesSeen += 1;
     const kickoff = new Date(event.commence_time);
     if (Number.isNaN(kickoff.getTime())) continue;
 
+    const { seasonYear, weekNumber } = weekForKickoff(kickoff);
+    const weekId = liveWeekIds.get(`${seasonYear}-${weekNumber}`);
+    if (!weekId) {
+      result.gamesSkipped = (result.gamesSkipped ?? 0) + 1;
+      continue;
+    }
+
     const line = extractHomeSpread(event, preferred);
     let existing = byEvent.get(event.id) ?? null;
 
     if (!existing) {
-      const weekId = await weekIdFor(kickoff);
 
       // The game may already be here without an event id, put there by a
       // Claude pull or entered by hand. Adopt it: inserting a second copy
@@ -305,6 +309,12 @@ export async function refreshScores(daysFrom = 3): Promise<SyncResult> {
     }
   }
 
+  // A closed week is a finished snapshot, so scores stop landing in it too.
+  const liveWeeks = (await listOpenedWeeks())
+    .filter((week) => week.closed_at === null)
+    .map((week) => week.id);
+  if (liveWeeks.length === 0) return result;
+
   for (const event of events) {
     result.gamesSeen += 1;
     const parsed = extractScores(event);
@@ -318,6 +328,7 @@ export async function refreshScores(daysFrom = 3): Promise<SyncResult> {
         status: event.completed ? "final" : "live",
       })
       .eq("odds_api_event_id", event.id)
+      .in("week_id", liveWeeks)
       .is("score_overridden_at", null)
       .select("id");
     if (!update.error && update.data && update.data.length > 0) result.scoresUpdated += 1;

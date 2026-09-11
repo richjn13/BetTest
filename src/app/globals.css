@@ -9,6 +9,7 @@
   --ink: 15 23 42;
   --muted: 100 116 139;
   --accent: 22 101 216;
+  --lock: 180 83 9;
   color-scheme: light dark;
 }
 
@@ -20,6 +21,7 @@
     --ink: 236 241 248;
     --muted: 148 163 184;
     --accent: 96 165 250;
+    --lock: 245 158 11;
   }
 }
 
@@ -27,6 +29,16 @@ body {
   background-color: rgb(var(--surface));
   color: rgb(var(--ink));
   -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @layer components {
@@ -35,8 +47,10 @@ body {
   }
 
   .btn {
-    @apply inline-flex items-center justify-center rounded-lg border border-edge px-3 py-2
-           text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    /* min-height keeps every control comfortably tappable on a phone. */
+    @apply inline-flex min-h-[40px] items-center justify-center rounded-lg border border-edge
+           px-3 py-2 text-sm font-medium transition-colors
+           disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
@@ -44,7 +58,8 @@ body {
   }
 
   .field {
-    @apply w-full rounded-lg border border-edge bg-surface px-3 py-2 text-base
+    /* 16px text stops iOS Safari zooming the page on focus. */
+    @apply w-full min-h-[40px] rounded-lg border border-edge bg-surface px-3 py-2 text-base
            outline-none focus:border-accent focus:ring-2 focus:ring-accent/30;
   }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { runRefresh } from "@/lib/refresh";
+import { runRefresh, type RefreshMode } from "@/lib/refresh";
 
 export const dynamic = "force-dynamic";
 // Matches the admin page. Needs a Pro plan; lower to 60 on Hobby.
@@ -10,12 +10,15 @@ export const maxDuration = 300;
  * Scheduled maintenance, run by Vercel Cron on the schedule in vercel.json.
  *
  *   1. freeze the line on every game past kickoff
- *   2. pull current spreads and any newly scheduled games
+ *   2. pull current spreads and any newly scheduled games   (full mode only)
  *   3. pull scores for games in progress or just finished
  *   4. regrade every pick on a resolved game
  *
  * Steps 1 and 4 run even when the odds feed is down, since they only need data
  * already stored.
+ *
+ * ?mode=scores skips step 2, halving the API cost of a run. Use it for a
+ * frequent schedule during games; use full mode once a week to pull spreads.
  */
 export async function GET(request: Request): Promise<NextResponse> {
   const authorization = request.headers.get("authorization");
@@ -23,11 +26,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const result = await runRefresh();
+  const mode: RefreshMode =
+    new URL(request.url).searchParams.get("mode") === "scores" ? "scores" : "full";
+
+  const result = await runRefresh(mode);
 
   return NextResponse.json(
     {
       ok: result.ok,
+      mode,
       // An odds feed failure is reported but not an HTTP error: stored spreads
       // are untouched, so members keep seeing the last known line. A database
       // failure is a real outage and answers as one.

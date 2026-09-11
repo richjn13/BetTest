@@ -32,7 +32,9 @@ export type RefreshResult = {
  * kickoff and the next run. On a 15-minute schedule that window is minutes
  * wide. On a weekly schedule it is a week wide.
  */
-export async function runRefresh(): Promise<RefreshResult> {
+export type RefreshMode = "full" | "scores";
+
+export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshResult> {
   const result: RefreshResult = {
     ok: true,
     degraded: [],
@@ -56,14 +58,19 @@ export async function runRefresh(): Promise<RefreshResult> {
     return { ...result, ok: false };
   }
 
-  // 2. Pull current spreads and any newly scheduled games.
-  const odds = await refreshOdds();
-  result.gamesInserted = odds.gamesInserted;
-  result.gamesAdopted = odds.gamesAdopted ?? 0;
-  result.spreadsUpdated = odds.spreadsUpdated;
-  if (odds.error) {
-    result.oddsError = odds.error;
-    result.degraded.push(odds.error);
+  // 2. Pull current spreads and any newly scheduled games. Skipped in scores
+  // mode, which exists so a frequent schedule costs one API call instead of
+  // two -- spreads barely move once a week is pulled and locked, but scores
+  // change every few minutes while games are on.
+  if (mode === "full") {
+    const odds = await refreshOdds();
+    result.gamesInserted = odds.gamesInserted;
+    result.gamesAdopted = odds.gamesAdopted ?? 0;
+    result.spreadsUpdated = odds.spreadsUpdated;
+    if (odds.error) {
+      result.oddsError = odds.error;
+      result.degraded.push(odds.error);
+    }
   }
 
   // 3. Pull scores for games in progress or recently finished.

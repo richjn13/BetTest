@@ -225,12 +225,59 @@ export async function removeUser(groupId: string, userId: string): Promise<void>
 
 // ------------------------------------------------------------------- weeks
 
-const WEEK_COLUMNS = "id, season_year, week_number, season_type, label";
+const WEEK_COLUMNS =
+  "id, season_year, week_number, season_type, label, opened_at, closed_at";
 
 export async function listWeeks(seasonYear?: number): Promise<Week[]> {
   let query = db().from("weeks").select(WEEK_COLUMNS).order("season_year").order("week_number");
   if (seasonYear !== undefined) query = query.eq("season_year", seasonYear);
   return ((unwrap(await query) as Week[]) ?? []);
+}
+
+/**
+ * The weeks members can see. A week appears only once its lines have been
+ * pulled, so next week's games never show up early.
+ */
+export async function listOpenedWeeks(): Promise<Week[]> {
+  const result = await db()
+    .from("weeks")
+    .select(WEEK_COLUMNS)
+    .not("opened_at", "is", null)
+    .order("season_year")
+    .order("week_number");
+  return (unwrap(result) as Week[]) ?? [];
+}
+
+/** Marks a week as visible. Called the first time lines land in it. */
+export async function openWeek(weekId: string): Promise<void> {
+  unwrap(
+    await db()
+      .from("weeks")
+      .update({ opened_at: new Date().toISOString() })
+      .eq("id", weekId)
+      .is("opened_at", null)
+      .select("id"),
+  );
+}
+
+/** Closes a week for good, or reopens one closed by mistake. */
+export async function setWeekClosed(weekId: string, closed: boolean): Promise<void> {
+  unwrap(
+    await db()
+      .from("weeks")
+      .update({ closed_at: closed ? new Date().toISOString() : null })
+      .eq("id", weekId)
+      .select("id"),
+  );
+}
+
+async function assertWeekOpen(weekId: string): Promise<Week> {
+  const week = await getWeek(weekId);
+  if (!week) throw new AppError("That week no longer exists.");
+  if (week.closed_at) {
+    throw new AppError(`${week.label} is closed. Reopen it first if you need to change something.`);
+  }
+  return week;
 }
 
 export async function getWeek(weekId: string): Promise<Week | null> {
@@ -273,23 +320,28 @@ export async function ensureWeek(
 }
 
 /**
- * The week to show by default: the earliest one that still has a game to come,
- * otherwise the most recent week that exists.
+ * The week to show by default: the earliest opened week that still has a game
+ * to come, otherwise the most recently opened week.
  */
 export async function getCurrentWeek(): Promise<Week | null> {
-  const upcoming = unwrap(
-    await db()
-      .from("games")
-      .select("week_id, kickoff_time")
-      .gt("kickoff_time", new Date().toISOString())
-      .order("kickoff_time")
-      .limit(1),
-  ) as { week_id: string }[] | null;
+  const opened = await listOpenedWeeks();
+  if (opened.length === 0) return null;
 
-  if (upcoming && upcoming.length > 0) return getWeek(upcoming[0].week_id);
+  const openedIds = new Set(opened.map((week) => week.id));
+  const upcoming =
+    unwrap<{ week_id: string }[]>(
+      await db()
+        .from("games")
+        .select("week_id, kickoff_time")
+        .gt("kickoff_time", new Date().toISOString())
+        .order("kickoff_time")
+        .limit(20),
+    ) ?? [];
 
-  const weeks = await listWeeks();
-  return weeks.at(-1) ?? null;
+  const next = upcoming.find((game) => openedIds.has(game.week_id));
+  if (next) return opened.find((week) => week.id === next.week_id) ?? null;
+
+  return opened.at(-1) ?? null;
 }
 
 // ------------------------------------------------------------------- games
@@ -321,6 +373,9 @@ export async function createGame(input: {
   kickoffTime: string;
   homeSpread: number | null;
 }): Promise<Game> {
+  await assertWeekOpen(input.weekId);
+  await openWeek(input.weekId);
+
   const result = unwrap(
     await db()
       .from("games")
@@ -353,6 +408,9 @@ export async function applyLockedLines(
   games: { awayTeam: string; homeTeam: string; kickoffIso: string; homeSpread: number }[],
   source: string,
 ): Promise<{ inserted: number; updated: number; skippedFrozen: number }> {
+  await assertWeekOpen(weekId);
+  await openWeek(weekId);
+
   const existing = await getGamesForWeek(weekId);
   const byMatchup = new Map(
     existing.map((game) => [`${game.away_team}@${game.home_team}`, game]),
@@ -497,6 +555,7 @@ export async function savePick(
 ): Promise<void> {
   const game = await getGame(gameId);
   if (!game) throw new AppError("That game no longer exists.");
+  await assertWeekOpen(game.week_id);
   if (!isGameOpen(game)) throw new AppError("That game has already started.");
 
   const result = await db()
@@ -524,6 +583,7 @@ export async function savePick(
 export async function setLock(userId: string, gameId: string): Promise<void> {
   const game = await getGame(gameId);
   if (!game) throw new AppError("That game no longer exists.");
+  await assertWeekOpen(game.week_id);
   if (!isGameOpen(game)) throw new AppError("That game has already started.");
 
   const existing = unwrap(
@@ -582,6 +642,7 @@ export async function setLock(userId: string, gameId: string): Promise<void> {
 export async function clearLock(userId: string, gameId: string): Promise<void> {
   const game = await getGame(gameId);
   if (!game) throw new AppError("That game no longer exists.");
+  await assertWeekOpen(game.week_id);
   if (!isGameOpen(game)) throw new AppError("That game has already started.");
   unwrap(
     await db()
@@ -610,7 +671,7 @@ export async function getStandings(groupId: string): Promise<{
       .select("user_id, week_id, is_lock, points_awarded")
       .in("user_id", memberIds),
     db().from("point_adjustments").select("user_id, week_id, points").eq("group_id", groupId),
-    listWeeks(),
+    listOpenedWeeks(),
   ]);
 
   const picks = (unwrap<PickWithGame[]>(pickRows) ?? []).map(toScoredPick);

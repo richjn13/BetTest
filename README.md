@@ -52,6 +52,22 @@ a note and is written to the audit log. The last admin cannot be demoted,
 because a pool with no admin has no way back: nobody could regenerate the join
 code or promote a replacement.
 
+### Every week is its own snapshot
+
+A week moves through three states, and nothing can reach backwards past them.
+
+| State | What it means |
+| --- | --- |
+| **Not opened** | Invisible to members. The odds feed will not create games in it. Next week's lines cannot appear before you pull them. |
+| **Open** | Visible, picks accepted, lines refresh until each kickoff |
+| **Closed** | Finished. No line refresh, no pick, no re-pull. What it was graded against stays exactly as it was |
+
+A week opens the moment you pull its lines or add a game by hand. You close it
+yourself under **Admin → Week status**, and can reopen one closed by mistake.
+
+This is what lets you work a week at a time. Pull Week 2 when you are ready for
+Week 2, and nothing about Week 1 moves.
+
 ### How signing in works
 
 There is no email or password. A member joins with a **join code, a username,
@@ -101,10 +117,9 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are three files to run, in order**, all in `supabase/migrations/`:
-`0001_init.sql`, then `0002_locked_lines.sql`, then
-`0003_one_game_per_matchup.sql`. Do the first one now and come back for the
-others.
+**There are four files to run, in order**, all in `supabase/migrations/`:
+`0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`, then
+`0004_week_snapshots.sql`. Do the first one now and come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -129,9 +144,10 @@ To confirm, open **Table Editor** in the sidebar. You should see seven tables:
 `groups`, `users`, `weeks`, `games`, `picks`, `point_adjustments`, and
 `admin_actions`.
 
-Now repeat the same copy-and-run for `0002_locked_lines.sql`, which adds one
-column used by the Claude line pull, and then `0003_one_game_per_matchup.sql`,
-which stops the same game being created twice in a week.
+Now repeat the same copy-and-run for the other three: `0002_locked_lines.sql`
+adds a column used by the line pull, `0003_one_game_per_matchup.sql` stops the
+same game being created twice in a week, and `0004_week_snapshots.sql` adds the
+two timestamps that make each week its own snapshot.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
@@ -418,6 +434,46 @@ falls back as described above.
 One thing worth knowing: **changing this later does not rewrite history.** A
 spread that has already frozen at kickoff keeps the number it was graded
 against, whichever book supplied it.
+
+### Automatic score updates during games
+
+Spreads barely move once a week is pulled and locked, but scores change every
+few minutes while games are on. So the refresh endpoint takes a mode:
+
+```
+/api/cron/refresh              full   spreads + scores, 2 API calls
+/api/cron/refresh?mode=scores  scores scores only,      1 API call
+```
+
+That halves the cost of a frequent schedule, which is what makes running every
+15 minutes affordable:
+
+| Schedule | Calls per month | Inside the free 500? |
+| --- | --- | --- |
+| Every 15 min, always, full | 5,760 | No |
+| Every 15 min, always, scores only | 2,880 | No |
+| **Every 15 min during games, scores only** | **~344** | **Yes** |
+| Every 30 min during games, scores only | ~172 | Yes |
+| Weekly full refresh | 8 | Yes |
+
+"During games" means roughly 20 hours a week: Thursday and Monday evenings, and
+Sunday afternoon through evening, US Eastern.
+
+**Doing this for free needs a scheduler that is not Vercel Cron**, because
+Hobby allows one cron run per day. A free external scheduler such as
+cron-job.org works: point it at
+
+```
+https://your-app.vercel.app/api/cron/refresh?mode=scores
+```
+
+with the header `Authorization: Bearer <your CRON_SECRET>`, on a cron
+expression covering the game windows, for example `*/15 17-23 * * 0` for Sunday
+afternoon and evening UTC. Keep the weekly full refresh in `vercel.json` for
+the spreads.
+
+If you are on Vercel Pro, add the same path and schedule to `vercel.json`
+instead and skip the external scheduler.
 
 ### Scores on the free plan
 

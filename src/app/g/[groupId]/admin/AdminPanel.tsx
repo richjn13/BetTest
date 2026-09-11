@@ -27,6 +27,7 @@ import {
   regenerateCodeAction,
   removeUserAction,
   setAdminAction,
+  setWeekClosedAction,
   syncOddsAction,
 } from "./actions";
 
@@ -54,6 +55,10 @@ export function AdminPanel(props: Props) {
 
       <Section title="Lines">
         <PullSection groupId={group.id} week={week} />
+      </Section>
+
+      <Section title="Week status">
+        <WeekStatusSection groupId={group.id} weeks={weeks} />
       </Section>
 
       <Section title="Odds feed">
@@ -177,6 +182,50 @@ function GroupSection({ group }: { group: Group }) {
         The old code stops working immediately. Members already in the pool stay in.
       </p>
     </form>
+  );
+}
+
+function WeekStatusSection({ groupId, weeks }: { groupId: string; weeks: Week[] }) {
+  const [state, action] = useFormState(setWeekClosedAction, IDLE);
+  const opened = weeks.filter((week) => week.opened_at !== null);
+
+  return (
+    <div className="space-y-3">
+      <Feedback state={state} />
+      <p className="text-sm text-muted">
+        A week appears to members once its lines are pulled. Closing it fixes
+        everything in place: no line refresh, no pick, no re-pull.
+      </p>
+
+      {opened.length === 0 ? (
+        <p className="text-sm text-muted">No weeks opened yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {[...opened].reverse().map((week) => (
+            <li
+              key={week.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg
+                         border border-edge p-3"
+            >
+              <span className="text-sm font-medium">
+                {week.label}
+                <span className="ml-2 text-xs font-normal text-muted">
+                  {week.closed_at ? "closed" : "open"}
+                </span>
+              </span>
+              <form action={action}>
+                <input type="hidden" name="groupId" value={groupId} />
+                <input type="hidden" name="weekId" value={week.id} />
+                <input type="hidden" name="close" value={week.closed_at ? "false" : "true"} />
+                <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
+                  {week.closed_at ? "Reopen" : "Close week"}
+                </SubmitButton>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

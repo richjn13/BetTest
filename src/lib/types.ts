@@ -24,7 +24,16 @@ export type Week = {
   week_number: number;
   season_type: "regular" | "postseason";
   label: string;
+  /** Null until lines are pulled. Members never see an unopened week. */
+  opened_at: string | null;
+  /** Set when the week is finished. Nothing may change it afterwards. */
+  closed_at: string | null;
 };
+
+/** A week accepts picks and line updates only while it is open. */
+export function isWeekOpen(week: Week): boolean {
+  return week.opened_at !== null && week.closed_at === null;
+}
 
 export type Game = {
   id: string;
