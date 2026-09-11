@@ -1,0 +1,60 @@
+# Pulls scores every 15 minutes while games are on.
+#
+# Vercel's Hobby plan allows one cron run a day, which is not enough to keep a
+# Sunday current. GitHub Actions has no such limit, and a curl costs a few
+# seconds, so this stays inside the free allowance on a private repository.
+#
+# It only runs during game windows. Polling around the clock would spend about
+# 2,900 calls a month against a free Odds API tier of 500; these windows spend
+# roughly 330.
+#
+# Two repository secrets are required, under Settings -> Secrets and variables
+# -> Actions:
+#
+#   APP_URL       https://your-app.vercel.app   (no trailing slash)
+#   CRON_SECRET   the same value as in Vercel
+#
+name: Update scores
+
+on:
+  schedule:
+    # All times UTC. GitHub runs these on a best-effort basis and can be a few
+    # minutes late when it is busy.
+    - cron: "*/15 17-23 * * 0"   # Sunday afternoon and evening games
+    - cron: "*/15 0-3 * * 1"     # Sunday night game, which runs past midnight UTC
+    - cron: "*/15 0-3 * * 5"     # Thursday night game
+    - cron: "*/15 0-3 * * 2"     # Monday night game
+  # Lets you trigger a refresh by hand from the Actions tab, phone included.
+  workflow_dispatch:
+
+jobs:
+  scores:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Refresh scores
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::APP_URL and CRON_SECRET must both be set as repository secrets."
+            exit 1
+          fi
+
+          response=$(mktemp)
+          status=$(curl --silent --show-error --max-time 120 \
+            --output "$response" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/scores")
+
+          echo "HTTP $status"
+          cat "$response"
+          echo
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Score refresh failed with HTTP $status"
+            exit 1
+          fi

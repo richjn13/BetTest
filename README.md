@@ -31,7 +31,7 @@ server, skip to *Running it on a computer* at the end.
 | Database | Supabase Postgres, reached server-side with the service role key |
 | Styling | Tailwind CSS |
 | Odds | The Odds API, NFL spreads and scores |
-| Scheduling | Vercel Cron, weekly on Tuesday evening |
+| Scheduling | GitHub Actions for scores during games, Vercel Cron as a daily backstop |
 | Hosting | Vercel |
 
 ### Who can do what
@@ -457,62 +457,62 @@ The two halves of the feed are on different footings, deliberately.
 **Admin → Lines**. Nothing polls for spreads, so a line cannot move under a
 week you have already opened.
 
-**Scores update on a schedule**, because games in the US finish in the small
-hours UK time and everything should be graded before anyone looks. `vercel.json`
-runs `/api/cron/refresh?mode=scores` daily at **08:00 UTC**:
+**Scores are polled**, because The Odds API has no webhooks — there is no way
+for it to push to you, so something has to ask. Two schedules do the asking:
 
-| Where | Local time |
-| --- | --- |
-| London | 9:00 AM |
-| New York | 4:00 AM |
-| Los Angeles | 1:00 AM |
-
-Monday Night Football ends around 04:30 UTC, so 08:00 UTC is clear of even the
-latest game. One run a day, one API call, which fits both the free Odds API tier
-and Vercel's Hobby cron limit.
-
-### If you want updates during games too
-
-Spreads barely move once a week is pulled and locked, but scores change every
-few minutes while games are on. So the refresh endpoint takes a mode:
-
-```
-/api/cron/refresh              full   spreads + scores, 2 API calls
-/api/cron/refresh?mode=scores  scores scores only,      1 API call
-```
-
-That halves the cost of a frequent schedule, which is what makes running every
-15 minutes affordable:
-
-| Schedule | Calls per month | Inside the free 500? |
+| What | Where it runs | When |
 | --- | --- | --- |
-| Every 15 min, always, full | 5,760 | No |
-| Every 15 min, always, scores only | 2,880 | No |
-| **Every 15 min during games, scores only** | **~344** | **Yes** |
-| Every 30 min during games, scores only | ~172 | Yes |
-| Weekly full refresh | 8 | Yes |
+| Every 15 minutes while games are on | GitHub Actions | Sunday afternoon and evening, and the three night games |
+| Once daily as a backstop | Vercel Cron | 08:00 UTC |
 
-"During games" means roughly 20 hours a week: Thursday and Monday evenings, and
-Sunday afternoon through evening, US Eastern.
+Both call `/api/cron/scores`, which costs **one** Odds API call per run.
 
-This is optional; the daily run above is enough to have everything graded by
-morning. **Doing it for free needs a scheduler that is not Vercel Cron**, because
-Hobby allows one cron run per day. A free external scheduler such as
-cron-job.org works: point it at
+## Setting up 15-minute score updates
 
-```
-https://your-app.vercel.app/api/cron/refresh?mode=scores
-```
+Vercel's Hobby plan allows one cron run a day, which cannot keep a Sunday
+current. GitHub Actions has no such limit and you already have the repository,
+so the workflow lives at `.github/workflows/scores.yml` and needs two secrets.
 
-with the header `Authorization: Bearer <your CRON_SECRET>`, on a cron
-expression covering the game windows, for example `*/15 17-23 * * 0` for Sunday
-afternoon and evening UTC. Keep the weekly full refresh in `vercel.json` for
-the spreads.
+On github.com, open your repository → **Settings** → **Secrets and variables** →
+**Actions** → **New repository secret**, and add both:
 
-If you are on Vercel Pro, add the same path and schedule to `vercel.json`
-instead and skip the external scheduler.
+| Name | Value |
+| --- | --- |
+| `APP_URL` | `https://your-app.vercel.app`, with no trailing slash |
+| `CRON_SECRET` | The same value you set in Vercel |
 
-### Scores on the free plan
+That is the whole setup. The workflow starts running on its own schedule.
+
+**To check it, or to force an update:** open the **Actions** tab, pick
+*Update scores*, and use **Run workflow**. That button works from a phone
+browser too, which is handy if a score looks stale mid-afternoon. Every run is
+logged there with what it returned, so the Actions tab doubles as the record of
+whether scores are current.
+
+### What it costs
+
+| Item | Calls per month |
+| --- | --- |
+| Every 15 min during game windows | ~330 |
+| Daily backstop at 08:00 UTC | 30 |
+| Manual line pulls, 2 calls each | ~8 |
+| **Total** | **~370 against a free tier of 500** |
+
+The windows matter. Polling every 15 minutes around the clock would spend about
+2,900 calls a month and blow the free tier five times over. Restricting it to
+the roughly 19 hours a week when NFL games are actually being played is what
+brings it inside.
+
+GitHub Actions bills about 330 minutes a month for this, against 2,000 free on
+a private repository.
+
+**Two caveats.** GitHub runs scheduled workflows on a best-effort basis and can
+be a few minutes late when it is busy, which does not matter for scores. And
+GitHub disables scheduled workflows on a repository with no activity for 60
+days; a single commit re-enables them, and the daily Vercel run keeps working
+regardless.
+
+### Scores on the free plan### Scores on the free plan
 
 Spreads and scores are two different endpoints, and they are not restricted the
 same way. Looking up games that have already finished counts as historical data,
