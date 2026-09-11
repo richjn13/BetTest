@@ -23,10 +23,13 @@ server, skip to *Running it on a computer* at the end.
 - **Visibility** — other members' picks stay hidden until each game kicks off,
   so nobody can copy. Once a game starts you see how the group split on it, and
   once it is decided, what share of the group got it right.
-- **Spreads fade out** — the line is shown while a game is live and while you
-  can still pick it. On a finished game, and across a closed week, the score and
-  the verdict replace it. The number is still stored, because it is what the
-  picks were graded against.
+- **Spreads move rather than vanish** — the line sits on the pick buttons while
+  a game is still live. Once it is settled the buttons show the score instead,
+  and the line reappears in the result underneath, named beside the side it
+  applied to: "KC won by 3. KC -2.5 covered."
+- **Each week says where it stands** — a line at the top tells you whether the
+  lines are still to be updated, how many games are still open, or that the week
+  is done and its scores are final.
 
 ## Stack
 

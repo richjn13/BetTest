@@ -1,3 +1,4 @@
+import { spreadForSide } from "./format";
 import { winningSide, type GradableGame, type Side } from "./scoring";
 import { abbreviate } from "./teams";
 
@@ -68,19 +69,30 @@ export function describeOutcome(input: OutcomeInput): GameOutcome {
     frozenHomeSpread: input.spread,
   });
 
+  // A final game with both scores always resolves; this keeps the type honest
+  // rather than asserting it away.
+  if (covered === null) return { ...empty, score };
+
   const margin = Math.abs(home - away);
   const winner = home > away ? input.homeTeam : input.awayTeam;
+  // The line is hidden on the pick buttons once a game is settled, so this is
+  // where it lives afterwards: named next to the side it applied to.
   let line: string;
   if (covered === "push") {
-    line = `${abbreviate(winner)} won by ${margin}, landing exactly on the number. Push.`;
+    const number = input.spread === null ? "" : ` (${spreadForSide(input.spread, "home")})`;
+    line = `${abbreviate(winner)} won by ${margin}, landing exactly on the number${number}. Push.`;
   } else if (input.spread === null) {
-    line = home === away ? "Tied, with no line to grade against." : `${abbreviate(winner)} won by ${margin}.`;
-  } else {
-    const coveringTeam = covered === "home" ? input.homeTeam : input.awayTeam;
     line =
       home === away
-        ? `Tied. ${abbreviate(coveringTeam)} covered.`
-        : `${abbreviate(winner)} won by ${margin}. ${abbreviate(coveringTeam)} covered.`;
+        ? "Tied, with no line to grade against."
+        : `${abbreviate(winner)} won by ${margin}. No line was set.`;
+  } else {
+    const coveringTeam = covered === "home" ? input.homeTeam : input.awayTeam;
+    const coveringLine = spreadForSide(input.spread, covered);
+    line =
+      home === away
+        ? `Tied. ${abbreviate(coveringTeam)} ${coveringLine} covered.`
+        : `${abbreviate(winner)} won by ${margin}. ${abbreviate(coveringTeam)} ${coveringLine} covered.`;
   }
 
   if (input.pickedSide === null) {

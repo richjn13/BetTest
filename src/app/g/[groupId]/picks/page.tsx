@@ -1,6 +1,7 @@
 import { requireViewer } from "@/lib/auth";
 import { getCurrentWeek, getWeek, getWeekBoard, listOpenedWeeks } from "@/lib/queries";
 import { PicksBoard } from "./PicksBoard";
+import { WeekNotice } from "./WeekNotice";
 import { WeekSummary } from "./WeekSummary";
 import { WeekTabs } from "./WeekTabs";
 
@@ -46,11 +47,7 @@ export default async function PicksPage({
         basePath={`/g/${params.groupId}/picks`}
       />
 
-      {week.closed_at && (
-        <p className="mb-3 rounded-lg border border-edge bg-raised px-3 py-2 text-xs text-muted">
-          {week.label} is closed. Its lines, picks and results are final.
-        </p>
-      )}
+      <WeekNotice week={week} cards={board} />
 
       {board.length > 0 && <WeekSummary cards={board} weekLabel={week.label} />}
 

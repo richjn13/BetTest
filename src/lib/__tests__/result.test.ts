@@ -17,7 +17,7 @@ describe("describeOutcome", () => {
   it("names the winner, the margin, and who covered", () => {
     const out = describeOutcome(base);
     expect(out.score).toBe("KC 27, BUF 24");
-    expect(out.line).toBe("KC won by 3. KC covered.");
+    expect(out.line).toBe("KC won by 3. KC -2.5 covered.");
     expect(out.covered).toBe("home");
   });
 
@@ -38,14 +38,14 @@ describe("describeOutcome", () => {
     // Won by exactly 3 with the line at 3.
     const out = describeOutcome({ ...base, spread: -3, isLock: true, points: 0 });
     expect(out.verdict).toBe("push");
-    expect(out.line).toContain("landing exactly on the number");
+    expect(out.line).toBe("KC won by 3, landing exactly on the number (-3). Push.");
     expect(out.effect).toContain("no penalty for the lock");
   });
 
   it("reports the underdog covering", () => {
     // Home favoured by 7 but wins by 3, so the away side covers.
     const out = describeOutcome({ ...base, spread: -7, pickedSide: "away", points: 1 });
-    expect(out.line).toBe("KC won by 3. BUF covered.");
+    expect(out.line).toBe("KC won by 3. BUF +7 covered.");
     expect(out.verdict).toBe("win");
   });
 
@@ -59,7 +59,7 @@ describe("describeOutcome", () => {
     // 20-20 with the home team laying 2.5 means the away side covers.
     const out = describeOutcome({ ...base, finalHomeScore: 20, finalAwayScore: 20 });
     expect(out.score).toContain("tied");
-    expect(out.line).toBe("Tied. BUF covered.");
+    expect(out.line).toBe("Tied. BUF +2.5 covered.");
     expect(out.covered).toBe("away");
   });
 
@@ -84,7 +84,7 @@ describe("describeOutcome", () => {
 
   it("grades straight up when there was never a line", () => {
     const out = describeOutcome({ ...base, spread: null });
-    expect(out.line).toBe("KC won by 3.");
+    expect(out.line).toBe("KC won by 3. No line was set.");
     expect(out.covered).toBe("home");
   });
 
