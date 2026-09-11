@@ -26,6 +26,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       ok: result.ok,
       // True when no game was waiting on a score, so no API call was spent.
       skipped: result.skipped,
+      // The open week the run was fetching for, if any.
+      waitingOn: result.waitingOn,
       degraded: result.degraded,
       frozen: result.frozen,
       scoresUpdated: result.scoresUpdated,

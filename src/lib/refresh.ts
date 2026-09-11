@@ -14,6 +14,8 @@ export type RefreshResult = {
   scoresError: string | null;
   /** True when the run found nothing to fetch and spent no API call. */
   skipped: boolean;
+  /** The open week the run was fetching for, if any. */
+  waitingOn: string | null;
   /** A database failure, which is a real outage rather than a soft degrade. */
   databaseError: string | null;
   frozen: number | null;
@@ -45,6 +47,7 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
     oddsError: null,
     scoresError: null,
     skipped: false,
+    waitingOn: null,
     databaseError: null,
     frozen: null,
     gamesInserted: 0,
@@ -82,16 +85,21 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
   // scheduled run outside game time, or after every game has gone final,
   // otherwise spends an API call to be told nothing changed. Checking the
   // database first is free; the call is not.
-  let pending = true;
+  let pending: PendingScores = { count: 1, weekLabel: null, daysBack: 0 };
   try {
-    pending = await hasPendingScores();
+    pending = await pendingScores();
   } catch (error) {
     // If the check fails, fetch rather than silently skip.
     console.error("refresh: could not check for pending scores", error);
   }
 
-  if (pending) {
-    const scores = await refreshScores();
+  result.waitingOn = pending.weekLabel;
+
+  if (pending.count > 0) {
+    // Only reach for the historical window when something is genuinely old
+    // enough to need it. The plain request covers live and just-finished, and
+    // is the one a free plan allows.
+    const scores = await refreshScores(pending.daysBack >= 1 ? pending.daysBack + 1 : null);
     result.scoresUpdated = scores.scoresUpdated;
     if (scores.error) {
       result.scoresError = scores.error;
@@ -116,25 +124,38 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
 /** How long a game may sit unresolved before we stop asking about it. */
 const STALE_GAME_DAYS = 7;
 
+export type PendingScores = {
+  /** Games in an open week that have kicked off and are not yet final. */
+  count: number;
+  /** The week they belong to, for the run's log. */
+  weekLabel: string | null;
+  /** How many days back the oldest of them kicked off, rounded up. */
+  daysBack: number;
+};
+
 /**
- * Is any game waiting on a score? True when a game in an open week has kicked
- * off, is not yet final, and is recent enough to still be worth asking about.
+ * What the open weeks are waiting on.
+ *
+ * Everything here is decided from stored data, which is free, so a run that
+ * finds nothing spends no API call at all. Closed weeks are excluded outright:
+ * their scores are final and nothing should be fetched for them.
  *
  * A game stuck unresolved for longer than a week is an admin problem, not a
- * feed problem, and should not keep spending API calls forever.
+ * feed problem, and stops counting so it cannot spend calls forever.
  */
-export async function hasPendingScores(now: Date = new Date()): Promise<boolean> {
-  const live = (await listOpenedWeeks())
-    .filter((week) => week.closed_at === null)
-    .map((week) => week.id);
-  if (live.length === 0) return false;
+export async function pendingScores(now: Date = new Date()): Promise<PendingScores> {
+  const none: PendingScores = { count: 0, weekLabel: null, daysBack: 0 };
 
+  const open = (await listOpenedWeeks()).filter((week) => week.closed_at === null);
+  if (open.length === 0) return none;
+
+  const labels = new Map(open.map((week) => [week.id, week.label]));
   const rows =
-    unwrap<{ id: string }[]>(
+    unwrap<{ id: string; week_id: string; kickoff_time: string }[]>(
       await db()
         .from("games")
-        .select("id")
-        .in("week_id", live)
+        .select("id, week_id, kickoff_time")
+        .in("week_id", [...labels.keys()])
         .neq("status", "final")
         .neq("status", "postponed")
         .neq("status", "canceled")
@@ -143,10 +164,19 @@ export async function hasPendingScores(now: Date = new Date()): Promise<boolean>
           "kickoff_time",
           new Date(now.getTime() - STALE_GAME_DAYS * 86_400_000).toISOString(),
         )
-        .limit(1),
+        .order("kickoff_time"),
     ) ?? [];
 
-  return rows.length > 0;
+  if (rows.length === 0) return none;
+
+  const oldest = new Date(rows[0].kickoff_time).getTime();
+  const daysBack = Math.ceil((now.getTime() - oldest) / 86_400_000);
+
+  return {
+    count: rows.length,
+    weekLabel: labels.get(rows[0].week_id) ?? null,
+    daysBack: Math.max(0, daysBack),
+  };
 }
 
 /** A one-line summary for the admin panel. */

@@ -281,7 +281,7 @@ export async function refreshOdds(): Promise<SyncResult> {
  * Pulls final scores. Games an admin corrected by hand are left alone so a
  * lagging feed cannot overwrite the correction.
  */
-export async function refreshScores(daysFrom = 3): Promise<SyncResult> {
+export async function refreshScores(daysFrom: number | null = null): Promise<SyncResult> {
   const result: SyncResult = {
     ok: true,
     gamesSeen: 0,
@@ -291,20 +291,24 @@ export async function refreshScores(daysFrom = 3): Promise<SyncResult> {
   };
 
   // daysFrom asks for games that already finished, which The Odds API treats as
-  // historical data and restricts to paid plans. On a free plan that request is
-  // rejected, so fall back to the unparameterized call, which still returns
-  // games in progress and those that finished very recently.
+  // historical data and restricts to paid plans. Asking for it speculatively
+  // meant every run made a request that a free plan refuses and then a second
+  // one that works. The caller now passes it only when the open week actually
+  // has a game old enough to need it, so the usual run is a single request.
   let events: ScoreEvent[];
   try {
-    events = await getJson<ScoreEvent[]>(ENDPOINTS.scores, {
-      daysFrom: String(daysFrom),
-      dateFormat: "iso",
-    });
+    events = await getJson<ScoreEvent[]>(
+      ENDPOINTS.scores,
+      daysFrom === null
+        ? { dateFormat: "iso" }
+        : { daysFrom: String(daysFrom), dateFormat: "iso" },
+    );
   } catch (first) {
+    if (daysFrom === null) return { ...result, ok: false, error: describe(first) };
     try {
+      // Fall back to the plain call, which still covers live and just-finished.
       events = await getJson<ScoreEvent[]>(ENDPOINTS.scores, { dateFormat: "iso" });
     } catch {
-      // Report the original failure: it describes the request we wanted.
       return { ...result, ok: false, error: describe(first) };
     }
   }
