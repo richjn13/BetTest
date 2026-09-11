@@ -387,11 +387,22 @@ function GamesSection({
           <ul className="space-y-3">
             {games.map((game) => (
               <li key={game.id} className="rounded-lg border border-edge p-3">
-                <div className="mb-2 text-sm">
-                  <span className="font-medium">
-                    {abbreviate(game.away_team)} at {abbreviate(game.home_team)}
-                  </span>
-                  <span className="ml-2 text-muted">
+                <div className="mb-2 space-y-0.5 text-sm">
+                  <p className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-mono font-semibold">
+                      {abbreviate(game.away_team)}
+                    </span>
+                    <span className="text-xs uppercase tracking-wide text-muted">away</span>
+                    <span className="text-muted">{game.away_team}</span>
+                  </p>
+                  <p className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-mono font-semibold">
+                      {abbreviate(game.home_team)}
+                    </span>
+                    <span className="text-xs uppercase tracking-wide text-muted">home</span>
+                    <span className="text-muted">{game.home_team}</span>
+                  </p>
+                  <p className="text-xs text-muted">
                     {formatKickoff(game.kickoff_time)} ·{" "}
                     {spreadForSide(effectiveSpread(game), "home")}
                     {game.spread_frozen_at
@@ -400,7 +411,7 @@ function GamesSection({
                         ? " (locked)"
                         : ""} · {game.status}
                     {game.score_overridden_at ? " · manual" : ""}
-                  </span>
+                  </p>
                 </div>
 
                 <form action={override} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -416,14 +427,14 @@ function GamesSection({
                   <input
                     name="finalAwayScore"
                     type="number"
-                    placeholder="away"
+                    placeholder={`${abbreviate(game.away_team)} (away)`}
                     defaultValue={game.final_away_score ?? ""}
                     className="field py-1 text-sm"
                   />
                   <input
                     name="finalHomeScore"
                     type="number"
-                    placeholder="home"
+                    placeholder={`${abbreviate(game.home_team)} (home)`}
                     defaultValue={game.final_home_score ?? ""}
                     className="field py-1 text-sm"
                   />

@@ -52,6 +52,18 @@ a note and is written to the audit log. The last admin cannot be demoted,
 because a pool with no admin has no way back: nobody could regenerate the join
 code or promote a replacement.
 
+### Profiles
+
+Each member has a **Profile** tab: an optional real name, an optional email
+visible only to admins, and a picture. The picture is shrunk to a 128px square
+in the browser before it is sent and stored inline, so a phone photo arrives at
+a few kilobytes and there is no storage bucket to configure. Avatars appear
+beside names on the leaderboard, and larger in the card at the top of it
+alongside your season total and position.
+
+The database refuses an avatar that is not an inline image, so nobody can point
+it at a remote address that would see every member loading the page.
+
 ### Every week is its own snapshot
 
 A week moves through three states, and nothing can reach backwards past them.
@@ -117,9 +129,10 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are four files to run, in order**, all in `supabase/migrations/`:
-`0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`, then
-`0004_week_snapshots.sql`. Do the first one now and come back for the others.
+**There are five files to run, in order**, all in `supabase/migrations/`:
+`0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`,
+`0004_week_snapshots.sql`, then `0005_profiles.sql`. Do the first one now and
+come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -144,10 +157,11 @@ To confirm, open **Table Editor** in the sidebar. You should see seven tables:
 `groups`, `users`, `weeks`, `games`, `picks`, `point_adjustments`, and
 `admin_actions`.
 
-Now repeat the same copy-and-run for the other three: `0002_locked_lines.sql`
-adds a column used by the line pull, `0003_one_game_per_matchup.sql` stops the
-same game being created twice in a week, and `0004_week_snapshots.sql` adds the
-two timestamps that make each week its own snapshot.
+Now repeat the same copy-and-run for the rest: `0002_locked_lines.sql` adds a
+column used by the line pull, `0003_one_game_per_matchup.sql` stops the same
+game being created twice in a week, `0004_week_snapshots.sql` adds the two
+timestamps that make each week its own snapshot, and `0005_profiles.sql` adds
+the name, email and avatar fields.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
@@ -435,7 +449,29 @@ One thing worth knowing: **changing this later does not rewrite history.** A
 spread that has already frozen at kickoff keeps the number it was graded
 against, whichever book supplied it.
 
-### Automatic score updates during games
+### Lines by hand, scores on their own
+
+The two halves of the feed are on different footings, deliberately.
+
+**Lines are pulled manually**, once a week, whenever you choose, from
+**Admin → Lines**. Nothing polls for spreads, so a line cannot move under a
+week you have already opened.
+
+**Scores update on a schedule**, because games in the US finish in the small
+hours UK time and everything should be graded before anyone looks. `vercel.json`
+runs `/api/cron/refresh?mode=scores` daily at **08:00 UTC**:
+
+| Where | Local time |
+| --- | --- |
+| London | 9:00 AM |
+| New York | 4:00 AM |
+| Los Angeles | 1:00 AM |
+
+Monday Night Football ends around 04:30 UTC, so 08:00 UTC is clear of even the
+latest game. One run a day, one API call, which fits both the free Odds API tier
+and Vercel's Hobby cron limit.
+
+### If you want updates during games too
 
 Spreads barely move once a week is pulled and locked, but scores change every
 few minutes while games are on. So the refresh endpoint takes a mode:
@@ -459,7 +495,8 @@ That halves the cost of a frequent schedule, which is what makes running every
 "During games" means roughly 20 hours a week: Thursday and Monday evenings, and
 Sunday afternoon through evening, US Eastern.
 
-**Doing this for free needs a scheduler that is not Vercel Cron**, because
+This is optional; the daily run above is enough to have everything graded by
+morning. **Doing it for free needs a scheduler that is not Vercel Cron**, because
 Hobby allows one cron run per day. A free external scheduler such as
 cron-job.org works: point it at
 

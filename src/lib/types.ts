@@ -16,6 +16,10 @@ export type User = {
   username: string;
   is_admin: boolean;
   created_at: string;
+  display_name: string | null;
+  email: string | null;
+  /** Data URL of a small square image, or null. */
+  avatar_url: string | null;
 };
 
 export type Week = {

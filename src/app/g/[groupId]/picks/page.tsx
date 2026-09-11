@@ -1,6 +1,7 @@
 import { requireViewer } from "@/lib/auth";
 import { getCurrentWeek, getWeek, getWeekBoard, listOpenedWeeks } from "@/lib/queries";
 import { PicksBoard } from "./PicksBoard";
+import { WeekSummary } from "./WeekSummary";
 import { WeekTabs } from "./WeekTabs";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,8 @@ export default async function PicksPage({
           {week.label} is closed. Its lines, picks and results are final.
         </p>
       )}
+
+      {board.length > 0 && <WeekSummary cards={board} weekLabel={week.label} />}
 
       {board.length === 0 ? (
         <p className="card p-6 text-center text-sm text-muted">

@@ -1,3 +1,4 @@
+import { Avatar } from "@/components/Avatar";
 import { requireViewer } from "@/lib/auth";
 import { getStandings } from "@/lib/queries";
 import { formatPoints } from "@/lib/format";
@@ -5,18 +6,33 @@ import type { WeekTotals } from "@/lib/scoring";
 
 export const dynamic = "force-dynamic";
 
+function ordinal(rank: number): string {
+  const tens = rank % 100;
+  if (tens >= 11 && tens <= 13) return `${rank}th`;
+  switch (rank % 10) {
+    case 1:
+      return `${rank}st`;
+    case 2:
+      return `${rank}nd`;
+    case 3:
+      return `${rank}rd`;
+    default:
+      return `${rank}th`;
+  }
+}
+
 export default async function LeaderboardPage({ params }: { params: { groupId: string } }) {
   const { user } = await requireViewer(params.groupId);
   const { standings, members, weeks } = await getStandings(params.groupId);
 
-  const usernames = new Map(members.map((member) => [member.id, member.username]));
+  const byId = new Map(members.map((member) => [member.id, member]));
 
   if (standings.length === 0) {
     return <p className="card p-6 text-center text-sm text-muted">No members yet.</p>;
   }
 
-  // Weeks arrive oldest first; the newest is the one people look at.
-  const columns = [...weeks].reverse();
+  // Week 1 first, then ascending. Reading left to right follows the season.
+  const columns = weeks;
 
   // Equal points and equal non-lock wins share a rank.
   let lastKey = "";
@@ -42,8 +58,41 @@ export default async function LeaderboardPage({ params }: { params: { groupId: s
     if (scores.length > 0) best.set(week.id, Math.max(...scores));
   }
 
+  const you = rows.find((row) => row.isViewer);
+  const yourMember = you ? byId.get(you.standing.userId) : undefined;
+  const graded = you
+    ? you.standing.weeks.reduce((sum, week) => sum + week.graded, 0)
+    : 0;
+
   return (
     <section className="space-y-4">
+      {you && yourMember && (
+        <div className="card flex items-center gap-4 p-4 sm:p-5">
+          <Avatar
+            username={yourMember.username}
+            avatarUrl={yourMember.avatar_url}
+            size={64}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-semibold leading-tight">
+              {yourMember.display_name || yourMember.username}
+            </p>
+            <p className="text-sm text-muted">
+              {yourMember.display_name ? `${yourMember.username} · ` : ""}
+              {ordinal(you.rank)} of {rows.length}
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="font-mono text-3xl font-semibold leading-none tabular-nums">
+              {formatPoints(you.standing.totalPoints)}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              points · {you.standing.correct}/{graded}
+            </p>
+          </div>
+        </div>
+      )}
+
       <header>
         <h2 className="text-lg font-semibold tracking-tight">Standings</h2>
         <p className="text-sm text-muted">
@@ -91,7 +140,16 @@ export default async function LeaderboardPage({ params }: { params: { groupId: s
                               font-medium ${isViewer ? "bg-[rgb(var(--surface))]" : "bg-surface"}`}
                 >
                   <span className="mr-2 font-mono text-xs text-muted">{rank}</span>
-                  {usernames.get(standing.userId) ?? "Unknown"}
+                  <span className="inline-flex items-center gap-2 align-middle">
+                    <Avatar
+                      username={byId.get(standing.userId)?.username ?? "?"}
+                      avatarUrl={byId.get(standing.userId)?.avatar_url ?? null}
+                      size={26}
+                    />
+                    <span className="truncate">
+                      {byId.get(standing.userId)?.username ?? "Unknown"}
+                    </span>
+                  </span>
                   {isViewer && <span className="ml-2 text-xs font-normal text-muted">you</span>}
                 </th>
 

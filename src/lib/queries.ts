@@ -114,7 +114,49 @@ export async function regenerateJoinCode(groupId: string): Promise<string> {
 
 // ------------------------------------------------------------------- users
 
-const USER_COLUMNS = "id, group_id, username, is_admin, created_at";
+const USER_COLUMNS =
+  "id, group_id, username, is_admin, created_at, display_name, email, avatar_url";
+
+/** Roughly 45KB of image once base64 is decoded; matches the check constraint. */
+const MAX_AVATAR_CHARS = 60_000;
+const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * Updates the viewer's own profile. The avatar must be an inline data URL:
+ * a remote address would let whoever hosts it see every member who loads the
+ * leaderboard, and the database refuses one anyway.
+ */
+export async function updateProfile(
+  userId: string,
+  input: { displayName: string | null; email: string | null; avatarUrl: string | null | undefined },
+): Promise<void> {
+  const patch: Record<string, string | null> = {
+    display_name: input.displayName,
+    email: input.email,
+  };
+
+  if (input.displayName !== null && input.displayName.length > 40) {
+    throw new AppError("Keep the name to 40 characters or fewer.");
+  }
+  if (input.email !== null && !EMAIL_SHAPE.test(input.email)) {
+    throw new AppError("That does not look like an email address.");
+  }
+
+  // undefined means "leave the picture alone"; null means "remove it".
+  if (input.avatarUrl !== undefined) {
+    if (input.avatarUrl !== null) {
+      if (!input.avatarUrl.startsWith("data:image/")) {
+        throw new AppError("That picture could not be read. Try another one.");
+      }
+      if (input.avatarUrl.length > MAX_AVATAR_CHARS) {
+        throw new AppError("That picture is too large even after shrinking. Try another one.");
+      }
+    }
+    patch.avatar_url = input.avatarUrl;
+  }
+
+  unwrap(await db().from("users").update(patch).eq("id", userId).select("id"));
+}
 
 export async function joinGroup(
   joinCode: string,
@@ -327,7 +369,10 @@ export async function getCurrentWeek(): Promise<Week | null> {
   const opened = await listOpenedWeeks();
   if (opened.length === 0) return null;
 
-  const openedIds = new Set(opened.map((week) => week.id));
+  // A finished week should never be what the page opens on.
+  const live = opened.filter((week) => week.closed_at === null);
+  const candidates = live.length > 0 ? live : opened;
+  const openedIds = new Set(candidates.map((week) => week.id));
   const upcoming =
     unwrap<{ week_id: string }[]>(
       await db()
@@ -339,9 +384,9 @@ export async function getCurrentWeek(): Promise<Week | null> {
     ) ?? [];
 
   const next = upcoming.find((game) => openedIds.has(game.week_id));
-  if (next) return opened.find((week) => week.id === next.week_id) ?? null;
+  if (next) return candidates.find((week) => week.id === next.week_id) ?? null;
 
-  return opened.at(-1) ?? null;
+  return candidates.at(-1) ?? null;
 }
 
 // ------------------------------------------------------------------- games
