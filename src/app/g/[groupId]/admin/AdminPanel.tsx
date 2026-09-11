@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/components/SubmitButton";
+import { InviteMessage } from "./InviteMessage";
 import { formatKickoff, formatPoints, spreadForSide } from "@/lib/format";
 import { abbreviate } from "@/lib/teams";
 import { NFL_TEAMS } from "@/lib/teams";
@@ -51,6 +52,15 @@ export function AdminPanel(props: Props) {
     <div className="space-y-4">
       <Section title="Group">
         <GroupSection group={group} />
+      </Section>
+
+      <Section title="Invite someone">
+        {/* Keyed by the code so regenerating it rewrites the message. */}
+        <InviteMessage
+          key={group.join_code}
+          groupName={group.name}
+          joinCode={group.join_code}
+        />
       </Section>
 
       <Section title="Lines">
