@@ -268,7 +268,11 @@ export async function refreshOdds(): Promise<SyncResult> {
     if (existing.spread_locked_at) {
       const moved = await db()
         .from("games")
-        .update({ kickoff_time: kickoff.toISOString() })
+        .update({
+          kickoff_time: kickoff.toISOString(),
+          kickoff_changed_at: now,
+          last_seen_in_feed_at: now,
+        })
         .eq("id", existing.id)
         .is("spread_frozen_at", null)
         .neq("kickoff_time", kickoff.toISOString())
@@ -288,6 +292,7 @@ export async function refreshOdds(): Promise<SyncResult> {
         spread_source: line.source,
         spread_updated_at: now,
         kickoff_time: kickoff.toISOString(),
+        last_seen_in_feed_at: now,
       })
       .eq("id", existing.id)
       .is("spread_frozen_at", null)
@@ -349,9 +354,10 @@ export async function refreshScores(daysFrom: number | null = null): Promise<Syn
     // pulls, and it matters because the stored kickoff is what freezes picks.
     const kickoff = new Date(event.commence_time);
     if (!Number.isNaN(kickoff.getTime())) {
+      const stamp = new Date().toISOString();
       const moved = await db()
         .from("games")
-        .update({ kickoff_time: kickoff.toISOString() })
+        .update({ kickoff_time: kickoff.toISOString(), kickoff_changed_at: stamp })
         .eq("odds_api_event_id", event.id)
         .in("week_id", liveWeeks)
         .is("spread_frozen_at", null)

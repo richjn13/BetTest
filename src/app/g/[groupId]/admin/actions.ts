@@ -480,7 +480,19 @@ export async function pullLinesAction(
         ? ` Dropped ${pulled.rejected.length}: ${pulled.rejected.join("; ")}.`
         : "";
 
-    return `${parts.join(", ")}. Check the slate below before anyone picks.${rejected}`;
+    const moved =
+      counts.movedKickoff.length > 0
+        ? ` Kickoff moved: ${counts.movedKickoff.join("; ")}.`
+        : "";
+
+    // Named rather than deleted: removing a game takes every pick on it.
+    const missing =
+      counts.missing.length > 0
+        ? ` NOT IN THIS PULL, so they may have come off the slate: ` +
+          `${counts.missing.join("; ")}. Delete them below if they are gone.`
+        : "";
+
+    return `${parts.join(", ")}. Check the slate below before anyone picks.${moved}${missing}${rejected}`;
   });
 }
 

@@ -50,6 +50,10 @@ export type Game = {
   spread_updated_at: string | null;
   spread_frozen_at: string | null;
   spread_locked_at: string | null;
+  /** When this kickoff last moved. Null means it never has. */
+  kickoff_changed_at: string | null;
+  /** When a line pull last saw this game on the slate. */
+  last_seen_in_feed_at: string | null;
   frozen_home_spread: number | null;
   final_home_score: number | null;
   final_away_score: number | null;

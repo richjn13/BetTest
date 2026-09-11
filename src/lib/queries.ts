@@ -412,7 +412,8 @@ export async function getCurrentWeek(): Promise<Week | null> {
 const GAME_COLUMNS =
   "id, week_id, home_team, away_team, kickoff_time, home_spread, spread_source, " +
   "spread_updated_at, spread_frozen_at, frozen_home_spread, final_home_score, " +
-  "final_away_score, score_overridden_at, status, odds_api_event_id, spread_locked_at";
+  "final_away_score, score_overridden_at, status, odds_api_event_id, spread_locked_at, " +
+  "kickoff_changed_at, last_seen_in_feed_at";
 
 export async function getGamesForWeek(weekId: string): Promise<Game[]> {
   const result = await db()
@@ -470,7 +471,14 @@ export async function applyLockedLines(
   weekId: string,
   games: { awayTeam: string; homeTeam: string; kickoffIso: string; homeSpread: number }[],
   source: string,
-): Promise<{ inserted: number; updated: number; skippedFrozen: number }> {
+): Promise<{
+  inserted: number;
+  updated: number;
+  skippedFrozen: number;
+  movedKickoff: string[];
+  /** Games in this week the pull did not mention -- dropped off the slate. */
+  missing: string[];
+}> {
   await assertWeekOpen(weekId);
   await openWeek(weekId);
 
@@ -480,7 +488,14 @@ export async function applyLockedLines(
   );
 
   const now = new Date().toISOString();
-  const counts = { inserted: 0, updated: 0, skippedFrozen: 0 };
+  const counts = {
+    inserted: 0,
+    updated: 0,
+    skippedFrozen: 0,
+    movedKickoff: [] as string[],
+    missing: [] as string[],
+  };
+  const seen = new Set<string>();
 
   for (const game of games) {
     const match = byMatchup.get(`${game.awayTeam}@${game.homeTeam}`);
@@ -498,6 +513,7 @@ export async function applyLockedLines(
         counts.skippedFrozen += 1;
         continue;
       }
+      const timeMoved = match.kickoff_time !== game.kickoffIso;
       unwrap(
         await db()
           .from("games")
@@ -507,12 +523,18 @@ export async function applyLockedLines(
             spread_source: source,
             spread_updated_at: now,
             spread_locked_at: now,
+            last_seen_in_feed_at: now,
+            ...(timeMoved ? { kickoff_changed_at: now } : {}),
           })
           .eq("id", match.id)
           .is("spread_frozen_at", null)
           .select("id"),
       );
       counts.updated += 1;
+      seen.add(match.id);
+      if (timeMoved) {
+        counts.movedKickoff.push(`${game.awayTeam} at ${game.homeTeam}`);
+      }
       continue;
     }
 
@@ -527,9 +549,19 @@ export async function applyLockedLines(
         spread_source: source,
         spread_updated_at: now,
         spread_locked_at: now,
+        last_seen_in_feed_at: now,
       })
       .select("id");
     if (!insert.error) counts.inserted += 1;
+  }
+
+  // Anything already in the week that this pull never mentioned has come off
+  // the slate. The game is left alone -- deleting it would take every pick on
+  // it -- but it is named so an admin can decide.
+  for (const existingGame of existing) {
+    if (seen.has(existingGame.id)) continue;
+    if (existingGame.spread_frozen_at) continue;
+    counts.missing.push(`${existingGame.away_team} at ${existingGame.home_team}`);
   }
 
   return counts;

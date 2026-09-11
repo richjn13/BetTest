@@ -185,20 +185,40 @@ function GameRow({
     points: card.pick?.points_awarded === null ? null : Number(card.pick?.points_awarded),
   });
 
+  // A settled game reads at a glance from the card's left edge: green for a
+  // win, red for a loss, neutral for a push or a game you sat out.
+  const edge =
+    outcome.verdict === "win"
+      ? "border-l-4 border-l-[rgb(var(--win))]"
+      : outcome.verdict === "loss"
+        ? "border-l-4 border-l-[rgb(var(--loss))]"
+        : outcome.verdict === "push"
+          ? "border-l-4 border-l-edge"
+          : "";
+
   const verdictTone =
     outcome.verdict === "win"
-      ? "text-emerald-600 dark:text-emerald-400"
-      : outcome.verdict === "push"
-        ? "text-muted"
-        : outcome.verdict === "loss"
-          ? "text-muted"
-          : "text-muted";
+      ? "font-medium text-[rgb(var(--win))]"
+      : outcome.verdict === "loss"
+        ? "text-[rgb(var(--loss))]"
+        : "text-muted";
+
+  // Flex scheduling moved this one after it was first listed.
+  const moved =
+    game.kickoff_changed_at !== null && new Date(game.kickoff_time).getTime() > Date.now();
 
   return (
-    <li className="card overflow-hidden">
+    <li className={`card overflow-hidden ${edge}`}>
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5 text-xs">
         <span className="truncate text-muted">
-          {formatKickoff(game.kickoff_time)}
+          {moved && (
+            <span className="mr-1.5 font-semibold text-[rgb(var(--loss))]">
+              Time changed
+            </span>
+          )}
+          <span className={moved ? "font-medium text-[rgb(var(--loss))]" : undefined}>
+            {formatKickoff(game.kickoff_time)}
+          </span>
           {countdown && <span className="hidden sm:inline"> · in {countdown}</span>}
         </span>
         <StatusPill card={card} verdict={outcome.verdict} saving={saving} />
@@ -357,7 +377,7 @@ function SideButton({
           selected
             ? "border-accent bg-accent/10"
             : covered
-              ? "border-emerald-500/40 bg-emerald-500/[0.06]"
+              ? "border-[rgb(var(--win))]/40 bg-[rgb(var(--win))]/[0.06]"
               : "border-edge"
         } ${open ? "hover:border-accent active:scale-[0.99]" : ""}`}
     >
@@ -380,7 +400,7 @@ function SideButton({
         {score !== null && (
           <span
             className={`block font-mono text-lg font-semibold leading-tight tabular-nums ${
-              covered ? "text-emerald-600 dark:text-emerald-400" : ""
+              covered ? "text-[rgb(var(--win))]" : "text-muted"
             }`}
           >
             {score}
@@ -410,7 +430,21 @@ function StatusPill({
   }
   if (game.status === "final") {
     if (verdict === "win") {
-      return <span className={`${pill} bg-emerald-500/15 text-emerald-600 dark:text-emerald-400`}>Final</span>;
+      return (
+        <span className={`${pill} bg-[rgb(var(--win))]/15 text-[rgb(var(--win))]`}>
+          Won
+        </span>
+      );
+    }
+    if (verdict === "loss") {
+      return (
+        <span className={`${pill} bg-[rgb(var(--loss))]/12 text-[rgb(var(--loss))]`}>
+          Lost
+        </span>
+      );
+    }
+    if (verdict === "push") {
+      return <span className={`${pill} bg-edge text-muted`}>Push</span>;
     }
     return <span className={`${pill} bg-edge text-muted`}>Final</span>;
   }

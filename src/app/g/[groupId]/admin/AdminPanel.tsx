@@ -385,8 +385,38 @@ function GamesSection({
           <p className="text-sm text-muted">No games in this week yet.</p>
         ) : (
           <ul className="space-y-3">
-            {games.map((game) => (
-              <li key={game.id} className="rounded-lg border border-edge p-3">
+            {games.map((game) => {
+              // Older than the newest stamp in this week means the last pull
+              // did not mention it, so it has come off the slate.
+              const newestSeen = games.reduce<string | null>(
+                (latest, other) =>
+                  other.last_seen_in_feed_at && (!latest || other.last_seen_in_feed_at > latest)
+                    ? other.last_seen_in_feed_at
+                    : latest,
+                null,
+              );
+              const droppedOff =
+                newestSeen !== null &&
+                (game.last_seen_in_feed_at === null || game.last_seen_in_feed_at < newestSeen);
+
+              return (
+              <li
+                key={game.id}
+                className={`rounded-lg border p-3 ${
+                  droppedOff ? "border-[rgb(var(--loss))]/50" : "border-edge"
+                }`}
+              >
+                {droppedOff && (
+                  <p className="mb-2 text-xs font-semibold text-[rgb(var(--loss))]">
+                    Not in the latest pull. It may have come off the slate. Picks
+                    on it still count until you delete it.
+                  </p>
+                )}
+                {game.kickoff_changed_at && (
+                  <p className="mb-2 text-xs font-medium text-[rgb(var(--loss))]">
+                    Kickoff has moved since this game was first listed.
+                  </p>
+                )}
                 <div className="mb-2 space-y-0.5 text-sm">
                   <p className="flex flex-wrap items-baseline gap-x-2">
                     <span className="font-mono font-semibold">
@@ -482,7 +512,8 @@ function GamesSection({
                   </SubmitButton>
                 </form>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
         {weeks.length === 0 && (

@@ -120,8 +120,15 @@ Other changes:
 - **A game rescheduled into a different week** keeps its original week and its
   picks, since a pick belongs to a game rather than to a date. Keep that week
   open until it is played, or its score will not arrive.
-- **A game added to the slate** appears on the next line pull. One removed has
-  to be deleted by hand, under Admin → Games.
+- **A game added to the slate** appears on the next line pull.
+- **A game removed from the slate is never deleted automatically**, because
+  deleting a game takes every pick on it. Instead a pull names anything it did
+  not mention, and that game's row in Admin → Games is outlined in red saying it
+  was not in the latest pull. Delete it yourself once you are sure.
+
+**Moved games are marked in red** wherever they appear: on the picks page a
+game whose kickoff has changed says "Time changed" beside its new time, so
+nobody turns up expecting the old slot. The mark clears once the game starts.
 
 ### How signing in works
 
@@ -172,10 +179,10 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are five files to run, in order**, all in `supabase/migrations/`:
+**There are six files to run, in order**, all in `supabase/migrations/`:
 `0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`,
-`0004_week_snapshots.sql`, then `0005_profiles.sql`. Do the first one now and
-come back for the others.
+`0004_week_snapshots.sql`, `0005_profiles.sql`, then
+`0006_schedule_changes.sql`. Do the first one now and come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -203,8 +210,9 @@ To confirm, open **Table Editor** in the sidebar. You should see seven tables:
 Now repeat the same copy-and-run for the rest: `0002_locked_lines.sql` adds a
 column used by the line pull, `0003_one_game_per_matchup.sql` stops the same
 game being created twice in a week, `0004_week_snapshots.sql` adds the two
-timestamps that make each week its own snapshot, and `0005_profiles.sql` adds
-the name, email and avatar fields.
+timestamps that make each week its own snapshot, `0005_profiles.sql` adds the
+name, email and avatar fields, and `0006_schedule_changes.sql` adds the two
+stamps that let the app notice a moved or vanished game.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
