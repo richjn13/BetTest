@@ -1,6 +1,8 @@
 import "server-only";
+import { db, unwrap } from "./db";
 import { freezeKickedOffSpreads, gradeResolvedGames } from "./grading";
 import { refreshOdds, refreshScores } from "./odds";
+import { listOpenedWeeks } from "./queries";
 
 export type RefreshResult = {
   ok: boolean;
@@ -10,6 +12,8 @@ export type RefreshResult = {
   oddsError: string | null;
   /** The scores pull specifically. Null means it worked. */
   scoresError: string | null;
+  /** True when the run found nothing to fetch and spent no API call. */
+  skipped: boolean;
   /** A database failure, which is a real outage rather than a soft degrade. */
   databaseError: string | null;
   frozen: number | null;
@@ -40,6 +44,7 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
     degraded: [],
     oddsError: null,
     scoresError: null,
+    skipped: false,
     databaseError: null,
     frozen: null,
     gamesInserted: 0,
@@ -73,12 +78,27 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
     }
   }
 
-  // 3. Pull scores for games in progress or recently finished.
-  const scores = await refreshScores();
-  result.scoresUpdated = scores.scoresUpdated;
-  if (scores.error) {
-    result.scoresError = scores.error;
-    result.degraded.push(scores.error);
+  // 3. Pull scores, but only if any game is actually waiting on one. A
+  // scheduled run outside game time, or after every game has gone final,
+  // otherwise spends an API call to be told nothing changed. Checking the
+  // database first is free; the call is not.
+  let pending = true;
+  try {
+    pending = await hasPendingScores();
+  } catch (error) {
+    // If the check fails, fetch rather than silently skip.
+    console.error("refresh: could not check for pending scores", error);
+  }
+
+  if (pending) {
+    const scores = await refreshScores();
+    result.scoresUpdated = scores.scoresUpdated;
+    if (scores.error) {
+      result.scoresError = scores.error;
+      result.degraded.push(scores.error);
+    }
+  } else {
+    result.skipped = true;
   }
 
   // 4. Regrade every pick on a resolved game.
@@ -91,6 +111,42 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
 
   result.ok = result.degraded.length === 0 && result.databaseError === null;
   return result;
+}
+
+/** How long a game may sit unresolved before we stop asking about it. */
+const STALE_GAME_DAYS = 7;
+
+/**
+ * Is any game waiting on a score? True when a game in an open week has kicked
+ * off, is not yet final, and is recent enough to still be worth asking about.
+ *
+ * A game stuck unresolved for longer than a week is an admin problem, not a
+ * feed problem, and should not keep spending API calls forever.
+ */
+export async function hasPendingScores(now: Date = new Date()): Promise<boolean> {
+  const live = (await listOpenedWeeks())
+    .filter((week) => week.closed_at === null)
+    .map((week) => week.id);
+  if (live.length === 0) return false;
+
+  const rows =
+    unwrap<{ id: string }[]>(
+      await db()
+        .from("games")
+        .select("id")
+        .in("week_id", live)
+        .neq("status", "final")
+        .neq("status", "postponed")
+        .neq("status", "canceled")
+        .lte("kickoff_time", now.toISOString())
+        .gte(
+          "kickoff_time",
+          new Date(now.getTime() - STALE_GAME_DAYS * 86_400_000).toISOString(),
+        )
+        .limit(1),
+    ) ?? [];
+
+  return rows.length > 0;
 }
 
 /** A one-line summary for the admin panel. */

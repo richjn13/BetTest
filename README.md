@@ -499,12 +499,29 @@ whether scores are current.
 
 ### What it costs
 
-| Item | Calls per month |
+**A scheduled run only spends an API call when a game is actually waiting on a
+score.** Before fetching, it asks the database whether any game in an open week
+has kicked off and is not yet final. If none has, the run does nothing and costs
+nothing. That covers the whole off-season, every weekday, the part of a Sunday
+window before the first kickoff, and the part after the last game goes final.
+
+So the schedule's ceiling is far above what it actually spends:
+
+| Item | Ceiling, if every run fetched |
 | --- | --- |
-| Every 15 min during game windows | ~330 |
-| Daily backstop at 08:00 UTC | 30 |
-| Manual line pulls, 2 calls each | ~8 |
-| **Total** | **~370 against a free tier of 500** |
+| Every 15 min during game windows | ~380 in a five-Sunday month |
+| Daily backstop at 08:00 UTC | 31 |
+| Manual line pulls, 2 calls each | ~10 |
+| **Ceiling** | **~420 against a free tier of 500** |
+
+In practice it lands well below that, because a Sunday window is only partly
+occupied by unfinished games. **Check the real number** on `/setup`, which
+reports calls used and remaining straight from the API's own headers.
+
+The allowance is **per month**, not per year or one-off, and resets on your
+billing date. If `/setup` shows fewer than 50 calls left it flags the row, which
+gives you time to narrow the windows in `.github/workflows/scores.yml` before
+anything stops working.
 
 The windows matter. Polling every 15 minutes around the clock would spend about
 2,900 calls a month and blow the free tier five times over. Restricting it to

@@ -263,14 +263,24 @@ async function checkOddsFeed(): Promise<Check[]> {
 
   try {
     const probe = await probeOddsFeed();
-    const low =
-      probe.quota.remaining !== null && probe.quota.remaining < 20 ? "warn" : "ok";
+    const { remaining, used } = probe.quota;
+    const low = remaining !== null && remaining < 50 ? "warn" : "ok";
+
+    // Used plus remaining is the size of the allowance, which saves guessing
+    // at what plan the key is on.
+    const detail =
+      probe.ok && remaining !== null
+        ? used !== null
+          ? `The key works. ${used} used, ${remaining} left of ${used + remaining} this period.`
+          : `The key works. ${remaining} calls left this period.`
+        : probe.message;
+
     return [
       key,
       {
         label: "The Odds API",
         status: probe.ok ? (low as Status) : "fail",
-        detail: probe.message,
+        detail,
       },
     ];
   } catch (error) {

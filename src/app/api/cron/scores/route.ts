@@ -24,6 +24,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   return NextResponse.json(
     {
       ok: result.ok,
+      // True when no game was waiting on a score, so no API call was spent.
+      skipped: result.skipped,
       degraded: result.degraded,
       frozen: result.frozen,
       scoresUpdated: result.scoresUpdated,

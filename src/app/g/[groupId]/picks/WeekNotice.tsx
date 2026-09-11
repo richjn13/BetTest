@@ -20,7 +20,7 @@ export function WeekNotice({ week, cards }: { week: Week; cards: GameCard[] }) {
   } else if (started === 0) {
     // Lines are pulled by hand each week, so say when that happens rather than
     // leaving people wondering whether a number is stale.
-    message = `Lines are updated on Tuesday. Pick any time before each kickoff.`;
+    message = `Lines are updated every Tuesday. Pick any time before each kickoff.`;
     tone = "text-muted";
   } else if (started < cards.length) {
     const remaining = cards.length - started;
