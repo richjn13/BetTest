@@ -1,5 +1,5 @@
 import { requireViewer } from "@/lib/auth";
-import { getCurrentWeek, getWeek, getWeekBoard, listOpenedWeeks } from "@/lib/queries";
+import { getCurrentWeek, getWeekBoard, listPickableWeeks } from "@/lib/queries";
 import { PicksBoard } from "./PicksBoard";
 import { WeekNotice } from "./WeekNotice";
 import { WeekSummary } from "./WeekSummary";
@@ -16,9 +16,10 @@ export default async function PicksPage({
 }) {
   const { user } = await requireViewer(params.groupId);
 
-  // Only weeks that have been pulled. A week nobody has pulled does not exist
-  // as far as members are concerned, so next week's lines never appear early.
-  const weeks = await listOpenedWeeks();
+  // Only weeks that are open: pulled, and not yet closed. An unpulled week does
+  // not exist yet as far as members are concerned, and a closed one is finished
+  // and comes off the app. Its points stay on the leaderboard.
+  const weeks = await listPickableWeeks();
 
   const requested = searchParams.week
     ? weeks.find((week) => week.id === searchParams.week)
@@ -28,10 +29,10 @@ export default async function PicksPage({
   if (!week) {
     return (
       <div className="card p-6 text-center">
-        <p className="text-sm font-medium">No week is open yet.</p>
+        <p className="text-sm font-medium">No week is open.</p>
         <p className="mt-1 text-sm text-muted">
-          An admin opens a week by pulling its lines from the Admin tab, or by
-          adding a game by hand.
+          An admin opens a week by pulling its lines from the Admin tab. Closed
+          weeks come off this page, but their points stay on the leaderboard.
         </p>
       </div>
     );
@@ -63,7 +64,7 @@ export default async function PicksPage({
           cards={board}
           groupId={params.groupId}
           weekLabel={week.label}
-          readOnly={week.closed_at !== null}
+          readOnly={false}
         />
       )}
     </div>

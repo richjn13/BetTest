@@ -80,10 +80,15 @@ A week moves through three states, and nothing can reach backwards past them.
 | --- | --- |
 | **Not opened** | Invisible to members. The odds feed will not create games in it. Next week's lines cannot appear before you pull them. |
 | **Open** | Visible, picks accepted, lines refresh until each kickoff |
-| **Closed** | Finished. No line refresh, no pick, no re-pull. What it was graded against stays exactly as it was |
+| **Closed** | Off the app. Members no longer see the week at all: no tab, no games, no picks. Its points stay in the season totals on the leaderboard. Admins still see it, so it can be reopened |
 
 A week opens the moment you pull its lines or add a game by hand. You close it
 yourself under **Admin → Week status**, and can reopen one closed by mistake.
+
+**Closing a week hides it from everyone**, so leave it open long enough for
+people to read the end-of-week summary on the picks page. That summary goes
+with the week; the leaderboard keeps the points and the per-week column either
+way.
 
 This is what lets you work a week at a time. Pull Week 2 when you are ready for
 Week 2, and nothing about Week 1 moves.

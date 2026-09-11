@@ -42,9 +42,13 @@ export default async function AdminPage({
     getPointAdjustments(params.groupId),
   ]);
 
+  // Admins see every week, closed ones included, so a closed week can be
+  // reopened or corrected. getCurrentWeek only returns open weeks, so fall back
+  // to the most recently opened one when everything is closed.
+  const mostRecentOpened = weeks.filter((candidate) => candidate.opened_at).at(-1) ?? null;
   const week = searchParams.week
-    ? ((await getWeek(searchParams.week)) ?? (await getCurrentWeek()))
-    : await getCurrentWeek();
+    ? ((await getWeek(searchParams.week)) ?? (await getCurrentWeek()) ?? mostRecentOpened)
+    : ((await getCurrentWeek()) ?? mostRecentOpened);
 
   const games = week ? await getGamesForWeek(week.id) : [];
   const picks = week

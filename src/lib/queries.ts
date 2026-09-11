@@ -290,6 +290,24 @@ export async function listOpenedWeeks(): Promise<Week[]> {
   return (unwrap(result) as Week[]) ?? [];
 }
 
+/**
+ * The weeks members actually see: opened, and not yet closed.
+ *
+ * Closing a week takes it off the app entirely. Its points stay in the season
+ * totals on the leaderboard, which reads the full opened list, but its games
+ * and picks are no longer browsable.
+ */
+export async function listPickableWeeks(): Promise<Week[]> {
+  const result = await db()
+    .from("weeks")
+    .select(WEEK_COLUMNS)
+    .not("opened_at", "is", null)
+    .is("closed_at", null)
+    .order("season_year")
+    .order("week_number");
+  return (unwrap(result) as Week[]) ?? [];
+}
+
 /** Marks a week as visible. Called the first time lines land in it. */
 export async function openWeek(weekId: string): Promise<void> {
   unwrap(
@@ -362,16 +380,16 @@ export async function ensureWeek(
 }
 
 /**
- * The week to show by default: the earliest opened week that still has a game
- * to come, otherwise the most recently opened week.
+ * The week to show by default: the earliest open week that still has a game to
+ * come, otherwise the most recently opened one.
+ *
+ * Only ever returns a week members may see. Null means there is nothing open,
+ * which the picks page reports rather than falling back to a closed week.
  */
 export async function getCurrentWeek(): Promise<Week | null> {
-  const opened = await listOpenedWeeks();
-  if (opened.length === 0) return null;
+  const candidates = await listPickableWeeks();
+  if (candidates.length === 0) return null;
 
-  // A finished week should never be what the page opens on.
-  const live = opened.filter((week) => week.closed_at === null);
-  const candidates = live.length > 0 ? live : opened;
   const openedIds = new Set(candidates.map((week) => week.id));
   const upcoming =
     unwrap<{ week_id: string }[]>(
