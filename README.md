@@ -93,6 +93,36 @@ way.
 This is what lets you work a week at a time. Pull Week 2 when you are ready for
 Week 2, and nothing about Week 1 moves.
 
+### When the schedule changes
+
+Flex scheduling moves a kickoff, usually about twelve days out. That matters
+here because **the stored kickoff is what freezes a pick**: a stale time would
+freeze picks at the old slot, potentially hours early.
+
+Three things keep it current, in order of how often they act:
+
+| What | When |
+| --- | --- |
+| The scores refresh | Every run. Each scores response carries the kickoff time, so keeping it current costs no extra API call |
+| A weekly line pull | Whenever you pull a week again. Tuesday is also when flex decisions are announced |
+| Admin → Games | By hand, using the date box on a game's row |
+
+A locked line is yours and the feed will not move the number, but it will move
+the time, because the schedule belongs to the NFL rather than to your pull.
+
+**Once a game's line freezes at kickoff, its time stops moving too**, and the
+admin form refuses to change it. Picks were already settled against it.
+
+Other changes:
+
+- **Postponed or canceled** — set the status under Admin → Games. The game drops
+  out of that week's scoring entirely, for everyone.
+- **A game rescheduled into a different week** keeps its original week and its
+  picks, since a pick belongs to a game rather than to a date. Keep that week
+  open until it is played, or its score will not arrive.
+- **A game added to the slate** appears on the next line pull. One removed has
+  to be deleted by hand, under Admin → Games.
+
 ### How signing in works
 
 There is no email or password. A member joins with a **join code, a username,

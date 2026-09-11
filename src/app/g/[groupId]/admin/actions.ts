@@ -280,6 +280,7 @@ export async function overrideGameAction(
   const status = text(form, "status") as GameStatus;
   const homeScore = optionalNumber(form, "finalHomeScore");
   const awayScore = optionalNumber(form, "finalAwayScore");
+  const kickoff = text(form, "kickoffTime");
   const note = text(form, "note");
 
   return run(groupId, async (actor) => {
@@ -290,6 +291,19 @@ export async function overrideGameAction(
       throw new AppError("A final game needs both scores.");
     }
 
+    // Moving a kickoff is how a flexed game gets corrected by hand when the
+    // feed has not caught up. A frozen game keeps its time: picks were already
+    // settled against it.
+    let kickoffIso: string | null = null;
+    if (kickoff) {
+      const parsed = new Date(kickoff);
+      if (Number.isNaN(parsed.getTime())) throw new AppError("Enter a valid kickoff time.");
+      if (game.spread_frozen_at) {
+        throw new AppError("This game's line is already frozen, so its kickoff cannot move.");
+      }
+      kickoffIso = parsed.toISOString();
+    }
+
     unwrap(
       await db()
         .from("games")
@@ -298,6 +312,7 @@ export async function overrideGameAction(
           final_home_score: homeScore,
           final_away_score: awayScore,
           score_overridden_at: new Date().toISOString(),
+          ...(kickoffIso ? { kickoff_time: kickoffIso } : {}),
         })
         .eq("id", gameId)
         .select("id"),
@@ -318,6 +333,7 @@ export async function overrideGameAction(
           away: game.final_away_score,
         },
         to: { status, home: homeScore, away: awayScore },
+        ...(kickoffIso ? { kickoffMovedTo: kickoffIso } : {}),
       },
     });
 

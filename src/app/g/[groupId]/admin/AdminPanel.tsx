@@ -414,7 +414,7 @@ function GamesSection({
                   </p>
                 </div>
 
-                <form action={override} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                <form action={override} className="grid grid-cols-2 gap-2 sm:grid-cols-6">
                   <input type="hidden" name="groupId" value={groupId} />
                   <input type="hidden" name="gameId" value={game.id} />
                   <select name="status" defaultValue={game.status} className="field py-1 text-sm">
@@ -439,6 +439,12 @@ function GamesSection({
                     className="field py-1 text-sm"
                   />
                   <input
+                    name="kickoffTime"
+                    type="datetime-local"
+                    aria-label="Move kickoff, leave blank to keep it"
+                    className="field py-1 text-sm"
+                  />
+                  <input
                     name="note"
                     required
                     placeholder="why"
@@ -448,6 +454,16 @@ function GamesSection({
                     Save
                   </SubmitButton>
                 </form>
+
+                <p className="mt-2 text-xs text-muted">
+                  The date box moves the kickoff, for a flexed game the feed has
+                  not caught up with. Leave it blank to keep the current time.
+                </p>
+
+                <p className="mt-2 text-xs text-muted">
+                  The date box moves the kickoff, for a flexed game the feed has
+                  not caught up with. Leave it blank to keep the current time.
+                </p>
 
                 <form action={remove} className="mt-2 flex gap-2">
                   <input type="hidden" name="groupId" value={groupId} />

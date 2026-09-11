@@ -19,6 +19,8 @@ export type SyncResult = {
   gamesAdopted?: number;
   /** Events skipped because their week has not been pulled, or is closed. */
   gamesSkipped?: number;
+  /** Games whose kickoff the feed moved, as flex scheduling does. */
+  kickoffsMoved?: number;
   /** Why the run degraded, if it did. The last known spread stays on screen. */
   error?: string;
   gamesSeen: number;
@@ -256,8 +258,28 @@ export async function refreshOdds(): Promise<SyncResult> {
       }
     }
 
-    // Frozen at kickoff, or locked by a deliberate pull: leave it alone.
-    if (existing.spread_frozen_at || existing.spread_locked_at || !line) continue;
+    // Frozen at kickoff: nothing changes, ever.
+    if (existing.spread_frozen_at) continue;
+
+    // A locked line is yours and the feed must not move it -- but the schedule
+    // is the NFL's. Flex scheduling moves kickoffs, and a stale kickoff freezes
+    // picks at the old time, which could be hours early. So the time is kept
+    // current even on a locked game; only the number is left alone.
+    if (existing.spread_locked_at) {
+      const moved = await db()
+        .from("games")
+        .update({ kickoff_time: kickoff.toISOString() })
+        .eq("id", existing.id)
+        .is("spread_frozen_at", null)
+        .neq("kickoff_time", kickoff.toISOString())
+        .select("id");
+      if (!moved.error && moved.data && moved.data.length > 0) {
+        result.kickoffsMoved = (result.kickoffsMoved ?? 0) + 1;
+      }
+      continue;
+    }
+
+    if (!line) continue;
 
     const update = await db()
       .from("games")
@@ -321,6 +343,25 @@ export async function refreshScores(daysFrom: number | null = null): Promise<Syn
 
   for (const event of events) {
     result.gamesSeen += 1;
+
+    // Every scores response carries commence_time, so keeping kickoffs current
+    // costs nothing extra. This is what catches a flexed game between line
+    // pulls, and it matters because the stored kickoff is what freezes picks.
+    const kickoff = new Date(event.commence_time);
+    if (!Number.isNaN(kickoff.getTime())) {
+      const moved = await db()
+        .from("games")
+        .update({ kickoff_time: kickoff.toISOString() })
+        .eq("odds_api_event_id", event.id)
+        .in("week_id", liveWeeks)
+        .is("spread_frozen_at", null)
+        .neq("kickoff_time", kickoff.toISOString())
+        .select("id");
+      if (!moved.error && moved.data && moved.data.length > 0) {
+        result.kickoffsMoved = (result.kickoffsMoved ?? 0) + 1;
+      }
+    }
+
     const parsed = extractScores(event);
     if (!parsed) continue;
 
