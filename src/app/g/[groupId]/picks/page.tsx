@@ -57,6 +57,9 @@ export default async function PicksPage({
         </p>
       ) : (
         <PicksBoard
+          // Keyed by week so switching weeks builds a fresh board rather than
+          // carrying the previous week's picks into it.
+          key={week.id}
           cards={board}
           groupId={params.groupId}
           weekLabel={week.label}

@@ -4,10 +4,16 @@ import { useCallback, useState, useTransition } from "react";
 import { formatKickoff, spreadForSide, timeUntil } from "@/lib/format";
 import { consensusVerdict, describeOutcome } from "@/lib/result";
 import { abbreviate, nickname } from "@/lib/teams";
+import {
+  countPicked,
+  gameSetKey,
+  initialSelections,
+  withLockOn,
+  type Selection,
+  type Selections,
+} from "@/lib/selections";
 import { effectiveSpread, type GameCard, type Side } from "@/lib/types";
 import { pickAction } from "./actions";
-
-type Selection = { side: Side | null; isLock: boolean };
 
 /**
  * Owns the week's picks so a tap lands immediately.
@@ -27,17 +33,23 @@ export function PicksBoard({
   weekLabel: string;
   readOnly: boolean;
 }) {
-  const [selections, setSelections] = useState<Record<string, Selection>>(() =>
-    Object.fromEntries(
-      cards.map((card) => [
-        card.game.id,
-        { side: card.pick?.picked_side ?? null, isLock: card.pick?.is_lock ?? false },
-      ]),
-    ),
-  );
+  const [selections, setSelections] = useState<Selections>(() => initialSelections(cards));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [, startTransition] = useTransition();
+
+  // Rebuild from scratch when the games change underneath. The page also keys
+  // this component by week, so normally it remounts; this covers the case
+  // where React reuses it anyway, which is what produced counts like
+  // "15 of 14" and finished games claiming they were never picked.
+  const key = gameSetKey(cards);
+  const [seenKey, setSeenKey] = useState(key);
+  if (seenKey !== key) {
+    setSeenKey(key);
+    setSelections(initialSelections(cards));
+    setErrors({});
+    setSaving({});
+  }
 
   const save = useCallback(
     (gameId: string, intent: string, revert: Record<string, Selection>) => {
@@ -77,20 +89,13 @@ export function PicksBoard({
     const previous = selections;
     const wasLocked = selections[gameId]?.isLock ?? false;
 
-    setSelections((current) => {
-      const next: Record<string, Selection> = {};
-      for (const [id, value] of Object.entries(current)) {
-        // Only one lock a week, so taking it moves it off wherever it was.
-        next[id] = { ...value, isLock: id === gameId ? !wasLocked : false };
-      }
-      if (!wasLocked && next[gameId].side === null) next[gameId].side = "home";
-      return next;
-    });
+    // Only one lock a week, so taking it moves it off wherever it was.
+    setSelections((current) => withLockOn(current, gameId, !wasLocked));
 
     save(gameId, wasLocked ? "unlock" : "lock", previous);
   };
 
-  const picked = Object.values(selections).filter((entry) => entry.side !== null).length;
+  const picked = countPicked(selections);
   const lockedCard = cards.find((card) => selections[card.game.id]?.isLock);
   const lockTeam = lockedCard
     ? abbreviate(
