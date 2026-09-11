@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeOutcome, type OutcomeInput } from "../result";
+import { consensusVerdict, describeOutcome, type OutcomeInput } from "../result";
 
 const base: OutcomeInput = {
   homeTeam: "Kansas City Chiefs",
@@ -92,5 +92,39 @@ describe("describeOutcome", () => {
     const out = describeOutcome({ ...base, finalHomeScore: null, finalAwayScore: null });
     expect(out.score).toBeNull();
     expect(out.verdict).toBe("pending");
+  });
+});
+
+describe("consensusVerdict", () => {
+  it("reports how many of the group got it right, as a percentage", () => {
+    expect(consensusVerdict({ total: 5, home: 3, away: 2 }, "home")).toEqual({
+      right: 3,
+      total: 5,
+      percent: 60,
+    });
+    expect(consensusVerdict({ total: 5, home: 3, away: 2 }, "away")).toEqual({
+      right: 2,
+      total: 5,
+      percent: 40,
+    });
+  });
+
+  it("handles everyone right and everyone wrong", () => {
+    expect(consensusVerdict({ total: 4, home: 4, away: 0 }, "home")).toMatchObject({ percent: 100 });
+    expect(consensusVerdict({ total: 4, home: 4, away: 0 }, "away")).toMatchObject({ percent: 0 });
+  });
+
+  it("rounds to whole percent", () => {
+    expect(consensusVerdict({ total: 3, home: 1, away: 2 }, "home")).toMatchObject({ percent: 33 });
+    expect(consensusVerdict({ total: 3, home: 2, away: 1 }, "home")).toMatchObject({ percent: 67 });
+  });
+
+  it("calls a push a push rather than a percentage", () => {
+    expect(consensusVerdict({ total: 5, home: 3, away: 2 }, "push")).toBe("push");
+  });
+
+  it("returns nothing when the game is undecided or nobody picked", () => {
+    expect(consensusVerdict({ total: 5, home: 3, away: 2 }, null)).toBeNull();
+    expect(consensusVerdict({ total: 0, home: 0, away: 0 }, "home")).toBeNull();
   });
 });

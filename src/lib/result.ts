@@ -29,12 +29,6 @@ export type OutcomeInput = {
   points: number | null;
 };
 
-function signed(value: number): string {
-  const trimmed = Number.isInteger(value) ? String(Math.abs(value)) : Math.abs(value).toFixed(1);
-  if (value === 0) return "a pick'em";
-  return value > 0 ? `+${trimmed}` : `-${trimmed}`;
-}
-
 export function describeOutcome(input: OutcomeInput): GameOutcome {
   const empty: GameOutcome = {
     covered: null,
@@ -76,12 +70,10 @@ export function describeOutcome(input: OutcomeInput): GameOutcome {
 
   const margin = Math.abs(home - away);
   const winner = home > away ? input.homeTeam : input.awayTeam;
-  const spreadText = input.spread === null ? null : signed(input.spread);
-
   let line: string;
   if (covered === "push") {
     line = `${abbreviate(winner)} won by ${margin}, landing exactly on the number. Push.`;
-  } else if (spreadText === null) {
+  } else if (input.spread === null) {
     line = home === away ? "Tied, with no line to grade against." : `${abbreviate(winner)} won by ${margin}.`;
   } else {
     const coveringTeam = covered === "home" ? input.homeTeam : input.awayTeam;
@@ -125,5 +117,29 @@ export function describeOutcome(input: OutcomeInput): GameOutcome {
     line,
     effect: `You had ${abbreviate(yourTeam)}${input.isLock ? " as your lock" : ""}. No points.`,
     verdict: "loss",
+  };
+}
+
+// ------------------------------------------------------------- consensus
+
+export type Consensus = { total: number; home: number; away: number };
+
+/**
+ * How much of the group got a settled game right. Returns null while the game
+ * is undecided or nobody picked it, and treats a push as nobody scoring rather
+ * than as a percentage, since points are what the number is really about.
+ */
+export function consensusVerdict(
+  consensus: Consensus,
+  covered: Side | "push" | null,
+): { right: number; total: number; percent: number } | "push" | null {
+  if (consensus.total === 0 || covered === null) return null;
+  if (covered === "push") return "push";
+
+  const right = covered === "home" ? consensus.home : consensus.away;
+  return {
+    right,
+    total: consensus.total,
+    percent: Math.round((right / consensus.total) * 100),
   };
 }

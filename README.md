@@ -21,7 +21,12 @@ server, skip to *Running it on a computer* at the end.
   bonus. Postponed and canceled games are dropped from the week entirely.
 - **Tiebreak** — total points, then most correct non-lock picks.
 - **Visibility** — other members' picks stay hidden until each game kicks off,
-  so nobody can copy.
+  so nobody can copy. Once a game starts you see how the group split on it, and
+  once it is decided, what share of the group got it right.
+- **Spreads fade out** — the line is shown while a game is live and while you
+  can still pick it. On a finished game, and across a closed week, the score and
+  the verdict replace it. The number is still stored, because it is what the
+  picks were graded against.
 
 ## Stack
 

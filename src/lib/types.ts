@@ -98,6 +98,8 @@ export type GameCard = {
   isOpen: boolean;
   /** Other members' picks, revealed only once the game has kicked off. */
   revealed: { username: string; side: Side; isLock: boolean }[] | null;
+  /** How the whole group split on this game. Null until kickoff. */
+  consensus: { total: number; home: number; away: number } | null;
 };
 
 /** The line a pick is graded against: frozen once kickoff passes. */

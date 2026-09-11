@@ -2,7 +2,7 @@
 
 import { useCallback, useState, useTransition } from "react";
 import { formatKickoff, spreadForSide, timeUntil } from "@/lib/format";
-import { describeOutcome } from "@/lib/result";
+import { consensusVerdict, describeOutcome } from "@/lib/result";
 import { abbreviate, nickname } from "@/lib/teams";
 import { effectiveSpread, type GameCard, type Side } from "@/lib/types";
 import { pickAction } from "./actions";
@@ -163,6 +163,11 @@ function GameRow({
   const spread = effectiveSpread(game);
   const countdown = timeUntil(game.kickoff_time);
 
+  // Once a game is settled the spread has done its job, and the score plus the
+  // one-line verdict say more than the number does. Hide it on a final game
+  // and across a closed week. It stays stored; it is what grading used.
+  const settled = game.status === "final" || readOnly;
+
   const outcome = describeOutcome({
     homeTeam: game.home_team,
     awayTeam: game.away_team,
@@ -200,7 +205,7 @@ function GameRow({
             key={side}
             side={side}
             game={game}
-            spread={spread}
+            spread={settled ? null : spread}
             selected={selection?.side === side}
             covered={outcome.covered === side}
             open={open}
@@ -240,8 +245,65 @@ function GameRow({
         </div>
       )}
 
+      <Consensus card={card} outcome={outcome} />
+
+      {error && (
+        <p role="alert" className="border-t border-edge px-3 py-2 text-xs text-red-500">
+          {error}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/**
+ * How the group split on this game, and once it is decided, how many of them
+ * got it right. Only ever shown after kickoff, so it cannot help anyone copy.
+ */
+function Consensus({
+  card,
+  outcome,
+}: {
+  card: GameCard;
+  outcome: ReturnType<typeof describeOutcome>;
+}) {
+  const { game, consensus, revealed } = card;
+  if (!consensus || consensus.total === 0) return null;
+
+  const homeAbbr = abbreviate(game.home_team);
+  const awayAbbr = abbreviate(game.away_team);
+
+  const result = consensusVerdict(consensus, outcome.covered);
+  const verdict =
+    result === null
+      ? null
+      : result === "push"
+        ? "Push, so nobody scored."
+        : `${result.right} of ${result.total} right · ${result.percent}%`;
+
+  return (
+    <div className="border-t border-edge px-3 py-2 text-xs">
+      <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-muted">
+          <span className="font-medium text-ink">{awayAbbr}</span> {consensus.away}
+          <span aria-hidden className="mx-1.5">
+            &middot;
+          </span>
+          <span className="font-medium text-ink">{homeAbbr}</span> {consensus.home}
+        </span>
+        {verdict && (
+          <span
+            className={
+              result === "push" ? "text-muted" : "font-medium tabular-nums"
+            }
+          >
+            {verdict}
+          </span>
+        )}
+      </p>
+
       {revealed && revealed.length > 0 && (
-        <p className="border-t border-edge px-3 py-2 text-xs text-muted">
+        <p className="mt-1 text-muted">
           {revealed.map((entry, index) => (
             <span key={entry.username}>
               {index > 0 && " · "}
@@ -254,13 +316,7 @@ function GameRow({
           ))}
         </p>
       )}
-
-      {error && (
-        <p role="alert" className="border-t border-edge px-3 py-2 text-xs text-red-500">
-          {error}
-        </p>
-      )}
-    </li>
+    </div>
   );
 }
 
@@ -310,11 +366,20 @@ function SideButton({
         </span>
       </span>
       <span className="shrink-0 text-right">
-        <span className="block font-mono text-sm tabular-nums">
-          {spreadForSide(spread, side)}
-        </span>
+        {/* A settled game passes no spread, leaving the score to speak. */}
+        {spread !== null && (
+          <span className="block font-mono text-sm tabular-nums text-muted">
+            {spreadForSide(spread, side)}
+          </span>
+        )}
         {score !== null && (
-          <span className="block font-mono text-base font-semibold tabular-nums">{score}</span>
+          <span
+            className={`block font-mono text-lg font-semibold leading-tight tabular-nums ${
+              covered ? "text-emerald-600 dark:text-emerald-400" : ""
+            }`}
+          >
+            {score}
+          </span>
         )}
       </span>
     </button>

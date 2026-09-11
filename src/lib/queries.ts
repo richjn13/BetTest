@@ -577,6 +577,15 @@ export async function getWeekBoard(
       game,
       pick: picks.find((pick) => pick.user_id === userId) ?? null,
       isOpen: open,
+      // Counts every member's pick, the viewer's included, so the percentage
+      // describes the whole group rather than everyone else.
+      consensus: kickedOff
+        ? {
+            total: picks.length,
+            home: picks.filter((pick) => pick.picked_side === "home").length,
+            away: picks.filter((pick) => pick.picked_side === "away").length,
+          }
+        : null,
       // Picks stay hidden until each game kicks off, so nobody can copy.
       revealed: kickedOff
         ? picks
