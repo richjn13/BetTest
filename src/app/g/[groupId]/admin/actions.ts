@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { db, unwrap } from "@/lib/db";
 import { gradeResolvedGames } from "@/lib/grading";
 import { pullLinesWithClaude } from "@/lib/claude-odds";
-import { pullLinesFromFeed, pullTotalsFromFeed } from "@/lib/odds";
+import { pullLinesFromFeed, pullTotalsFromFeed, type Quota } from "@/lib/odds";
 import { runRefresh, summarize } from "@/lib/refresh";
 import {
   AppError,
@@ -437,6 +437,13 @@ export async function adjustPointsAction(
 
 // ------------------------------------------------------------------- pulls
 
+/** "412 of your 500 monthly calls left", when the feed told us. */
+function quotaNote(quota: Quota | undefined): string {
+  if (!quota || quota.remaining === null) return "";
+  const allowance = quota.used !== null ? ` of your ${quota.used + quota.remaining}` : "";
+  return ` ${quota.remaining}${allowance} monthly odds-feed calls left.`;
+}
+
 function readSport(form: FormData): Sport {
   const value = text(form, "sport");
   return isSport(value) ? value : "nfl";
@@ -473,9 +480,15 @@ export async function pullGamesAction(
     }
 
     const limit = config.poolSize;
+    // Claude spends Anthropic tokens, not odds-feed calls, so only a feed pull
+    // has a quota to report.
+    let feedQuota: Quota | undefined;
     const pulled = useClaude
       ? await pullLinesWithClaude(seasonYear, weekNumber, sport)
-      : await pullLinesFromFeed(seasonYear, weekNumber, sport, limit);
+      : await pullLinesFromFeed(seasonYear, weekNumber, sport, limit).then((result) => {
+          feedQuota = result.quota;
+          return result;
+        });
     if (!pulled.ok) throw new AppError(pulled.error ?? "The pull came back empty.");
 
     const week = await ensureWeek(seasonYear, weekNumber, sport);
@@ -525,7 +538,10 @@ export async function pullGamesAction(
         ? ` Left out ${pulled.rejected.length}: ${pulled.rejected.join("; ")}.`
         : "";
 
-    return `${parts.join(", ")}. Check the slate below before anyone picks.${moved}${missing}${rejected}`;
+    return (
+      `${parts.join(", ")}. Check the slate on the Games page before anyone picks.` +
+      `${moved}${missing}${rejected}${quotaNote(feedQuota)}`
+    );
   });
 }
 
@@ -575,7 +591,8 @@ export async function pullTotalsAction(
 
     return (
       `${counts.filled} over/under${counts.filled === 1 ? "" : "s"} written` +
-      `${counts.unchanged > 0 ? `, ${counts.unchanged} already current` : ""}.${waiting}`
+      `${counts.unchanged > 0 ? `, ${counts.unchanged} already current` : ""}.${waiting}` +
+      quotaNote(pulled.quota)
     );
   });
 }

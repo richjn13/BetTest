@@ -43,10 +43,13 @@ type Props = {
   picks: Pick[];
   actions: AdminAction[];
   adjustments: PointAdjustment[];
+  /** What the odds feed says is left this month. Null when it could not say. */
+  quota: { remaining: number | null; used: number | null } | null;
 };
 
 export function AdminPanel(props: Props) {
-  const { viewerId, group, members, weeks, week, games, picks, actions, adjustments } = props;
+  const { viewerId, group, members, weeks, week, games, picks, actions, adjustments, quota } =
+    props;
 
   return (
     <div className="space-y-4">
@@ -65,7 +68,7 @@ export function AdminPanel(props: Props) {
 
       {SPORTS.map((sport) => (
         <Section key={sport} title={`Pull ${sportLabel(sport)}`}>
-          <GamesPullSection groupId={group.id} sport={sport} weeks={weeks} />
+          <GamesPullSection groupId={group.id} sport={sport} weeks={weeks} quota={quota} />
           <TotalsPullSection
             groupId={group.id}
             sport={sport}
@@ -233,14 +236,38 @@ function WeekStatusSection({ groupId, weeks }: { groupId: string; weeks: Week[] 
  * selected -- and the NFL and college slates are pulled at different times in
  * the week, for different reasons, by someone thinking about one of them.
  */
+/** What the odds feed has left this month, said plainly. */
+function QuotaLine({ quota }: { quota: Props["quota"] }) {
+  if (!quota || quota.remaining === null) {
+    return (
+      <p className="text-xs text-muted">
+        The odds feed could not say how many calls are left. Check the setup page.
+      </p>
+    );
+  }
+
+  const allowance = quota.used === null ? null : quota.used + quota.remaining;
+  const low = quota.remaining < 50;
+
+  return (
+    <p className={`text-xs ${low ? "text-[rgb(var(--loss))]" : "text-muted"}`}>
+      <strong className={low ? "" : "text-ink"}>{quota.remaining}</strong>
+      {allowance === null ? " calls" : ` of your ${allowance} calls`} left this month.
+      A pull spends one. {low && "Running low: use Claude below, or add games by hand."}
+    </p>
+  );
+}
+
 function GamesPullSection({
   groupId,
   sport,
   weeks,
+  quota,
 }: {
   groupId: string;
   sport: Sport;
   weeks: Week[];
+  quota: Props["quota"];
 }) {
   const [state, action] = useFormState(pullGamesAction, IDLE);
   const config = sportConfig(sport);
@@ -300,9 +327,12 @@ function GamesPullSection({
         <div className="col-span-2">
           <label className="label">Where from</label>
           <select name="source" defaultValue="feed" className="field">
-            <option value="feed">The odds feed (one request, exact names)</option>
-            <option value="claude">Claude web search (slower, use if the feed is empty)</option>
+            <option value="feed">The odds feed &mdash; one call, exact names</option>
+            <option value="claude">Claude web search &mdash; no feed calls, slower</option>
           </select>
+          <div className="mt-1">
+            <QuotaLine quota={quota} />
+          </div>
         </div>
       </div>
       <p className="text-sm">

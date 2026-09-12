@@ -460,13 +460,21 @@ quickly.
 **Admin → Pull games** is the on-demand path. Choose the competition, the season
 and the week, then press **Pull games**.
 
+**How many calls you have left** is printed in each pull box, under "Where
+from", before you press anything. Reading it is free: the feed's own listing
+endpoint is not billed and every reply carries the counters. Each pull, games or
+totals, spends exactly one call, and the result message says what is left
+afterwards. The free plan is 500 a month.
+
 **Where the numbers come from** is a choice on that form, and the odds feed is
 the default. The feed answers with exact team names, exact kickoff times and a
 current spread for one request against your monthly quota, and nothing in it can
-be misremembered. Claude web search is the other option, kept for a week the
-feed has not posted yet; it is slower, it costs Anthropic tokens rather than
-quota, and its numbers are a model's reading of a betting page. Use the feed
-unless it comes back empty.
+be misremembered. Claude web search is the other option and spends no
+odds-feed calls at all: it costs Anthropic credit instead, a fraction of a
+dollar a pull. It is slower, and its numbers are a model's reading of a betting
+page rather than a sportsbook's own field, so check the slate afterwards. Use
+it when the feed has not posted a week yet, or when you would rather not spend
+a call. Adding games by hand on the Games page spends nothing at all.
 
 **NFL pulls the whole slate. NCAA pulls a pool of forty.** College plays sixty
 or more games a week, which is nobody's idea of a pick sheet, but the obvious

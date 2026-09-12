@@ -74,7 +74,7 @@ function readQuota(response: Response): Quota {
 let lastQuota: Quota = { remaining: null, used: null };
 
 /** Quota counters from the most recent call this process made. */
-function lastKnownQuota(): Quota {
+export function lastKnownQuota(): Quota {
   return lastQuota;
 }
 
@@ -490,7 +490,7 @@ export async function pullLinesFromFeed(
   weekNumber: number,
   sport: Sport,
   limit: number | null = null,
-): Promise<PullResult> {
+): Promise<PullResult & { quota?: Quota }> {
   const empty: PullResult = { ok: false, error: null, games: [], rejected: [], source: null };
   if (!process.env.ODDS_API_KEY) {
     return { ...empty, error: "No ODDS_API_KEY is set, so the odds feed is off." };
@@ -568,6 +568,7 @@ export async function pullLinesFromFeed(
     games: chosen,
     rejected,
     source: sources.size === 1 ? [...sources][0] : "odds feed",
+    quota: lastKnownQuota(),
   };
 }
 
@@ -587,7 +588,7 @@ export type FeedTotal = {
  */
 export async function pullTotalsFromFeed(
   sport: Sport,
-): Promise<{ ok: boolean; error: string | null; totals: FeedTotal[] }> {
+): Promise<{ ok: boolean; error: string | null; totals: FeedTotal[]; quota?: Quota }> {
   if (!process.env.ODDS_API_KEY) {
     return { ok: false, error: "No ODDS_API_KEY is set, so the odds feed is off.", totals: [] };
   }
@@ -617,5 +618,5 @@ export async function pullTotalsFromFeed(
     });
   }
 
-  return { ok: true, error: null, totals };
+  return { ok: true, error: null, totals, quota: lastKnownQuota() };
 }
