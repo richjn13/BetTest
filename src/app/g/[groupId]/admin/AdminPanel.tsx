@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/components/SubmitButton";
 import { InviteMessage } from "./InviteMessage";
-import { formatPoints } from "@/lib/format";
+import { formatPoints, shortDate, weekChoiceLabel } from "@/lib/format";
+import { weekPlayDateUtc } from "@/lib/season-week";
 import { abbreviate } from "@/lib/teams";
 import { SPORTS, sportConfig, sportLabel, type Sport } from "@/lib/sports";
 import type {
@@ -62,13 +63,18 @@ export function AdminPanel(props: Props) {
         />
       </Section>
 
-      <Section title="Pull games">
-        <GamesPullSection groupId={group.id} week={week} />
-      </Section>
-
-      <Section title="Pull totals">
-        <TotalsPullSection groupId={group.id} week={week} games={games} />
-      </Section>
+      {SPORTS.map((sport) => (
+        <Section key={sport} title={`Pull ${sportLabel(sport)}`}>
+          <GamesPullSection groupId={group.id} sport={sport} weeks={weeks} />
+          <TotalsPullSection
+            groupId={group.id}
+            sport={sport}
+            weeks={weeks}
+            week={week}
+            games={games}
+          />
+        </Section>
+      ))}
 
       <Section title="Week status">
         <WeekStatusSection groupId={group.id} weeks={weeks} />
@@ -145,7 +151,7 @@ function WeekPicker({
     >
       {[...weeks].reverse().map((option) => (
         <option key={option.id} value={option.id}>
-          {sportLabel(option.sport)} · {option.season_year} · {option.label}
+          {sportLabel(option.sport)} · {weekChoiceLabel(option)}
         </option>
       ))}
     </select>
@@ -200,7 +206,7 @@ function WeekStatusSection({ groupId, weeks }: { groupId: string; weeks: Week[] 
                 <span className="mr-2 rounded bg-edge px-1.5 py-0.5 text-xs font-semibold">
                   {sportLabel(week.sport)}
                 </span>
-                {week.label}
+                {weekChoiceLabel(week)}
                 <span className="ml-2 text-xs font-normal text-muted">
                   {week.closed_at ? "closed" : "open"}
                 </span>
@@ -221,63 +227,72 @@ function WeekStatusSection({ groupId, weeks }: { groupId: string; weeks: Week[] 
   );
 }
 
-function GamesPullSection({ groupId, week }: { groupId: string; week: Week | null }) {
+/**
+ * One pull box per competition. They were a single form with a competition
+ * dropdown, which meant every pull started by checking which sport was
+ * selected -- and the NFL and college slates are pulled at different times in
+ * the week, for different reasons, by someone thinking about one of them.
+ */
+function GamesPullSection({
+  groupId,
+  sport,
+  weeks,
+}: {
+  groupId: string;
+  sport: Sport;
+  weeks: Week[];
+}) {
   const [state, action] = useFormState(pullGamesAction, IDLE);
-  const [sport, setSport] = useState<Sport>(week?.sport ?? "nfl");
-  const defaultYear = week?.season_year ?? new Date().getUTCFullYear();
-  const defaultWeek = week?.week_number ?? 1;
   const config = sportConfig(sport);
+  const lowest = sport === "ncaaf" ? 0 : 1;
+
+  // The week to offer: the one after the last one pulled for this sport, since
+  // pulling the same week twice is the rarer thing to want.
+  const latest = weeks.filter((week) => week.sport === sport).at(-1) ?? null;
+  const [seasonYear, setSeasonYear] = useState(
+    latest?.season_year ?? new Date().getUTCFullYear(),
+  );
+  const [weekNumber, setWeekNumber] = useState(
+    Math.min(config.highestWeek, (latest?.week_number ?? lowest) + (latest ? 1 : 0)),
+  );
+
+  const played = weekPlayDateUtc(seasonYear, weekNumber, sport);
 
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="groupId" value={groupId} />
+      <input type="hidden" name="sport" value={sport} />
       <Feedback state={state} />
       <p className="text-sm text-muted">
-        Writes the week&apos;s games and spreads. Each line is locked at the
-        moment of the pull: the odds feed leaves it alone, and only another pull
-        replaces it.
+        {sport === "ncaaf"
+          ? "Takes the twenty best Saturday games of the week: ranked teams first, then the closest lines."
+          : "Takes the full slate for the week."}{" "}
+        Each line is locked at the moment of the pull, so the odds feed leaves
+        it alone and only another pull replaces it.
       </p>
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
-          <label className="label">Competition</label>
-          <select
-            name="sport"
-            value={sport}
-            onChange={(event) => setSport(event.target.value as Sport)}
-            className="field"
-          >
-            {SPORTS.map((option) => (
-              <option key={option} value={option}>
-                {sportLabel(option)}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-muted">
-            {sport === "ncaaf"
-              ? "NCAA takes the twenty best Saturday games of the week: ranked teams first, then the closest lines."
-              : "NFL takes the full slate for the week."}
-          </p>
-        </div>
         <div>
           <label className="label">Season</label>
           <input
             name="seasonYear"
             type="number"
-            defaultValue={defaultYear}
+            value={seasonYear}
+            onChange={(event) => setSeasonYear(Number(event.target.value))}
             required
             className="field"
           />
         </div>
         <div>
           <label className="label">
-            {sport === "ncaaf" ? "Week (0 = week zero)" : "Week (19-22 = playoffs)"}
+            Week {sport === "ncaaf" ? "(0 = week zero)" : "(19-22 = playoffs)"}
           </label>
           <input
             name="weekNumber"
             type="number"
-            min={sport === "ncaaf" ? 0 : 1}
+            min={lowest}
             max={config.highestWeek}
-            defaultValue={defaultWeek}
+            value={weekNumber}
+            onChange={(event) => setWeekNumber(Number(event.target.value))}
             required
             className="field"
           />
@@ -290,52 +305,78 @@ function GamesPullSection({ groupId, week }: { groupId: string; week: Week | nul
           </select>
         </div>
       </div>
-      <SubmitButton className="btn" pendingLabel="Pulling...">
-        Pull games
-      </SubmitButton>
-      <p className="text-xs text-muted">
-        Check the slate below before anyone picks. Once a game kicks off its line
-        is final and no pull can change it.
+      <p className="text-sm">
+        Pulling{" "}
+        <strong>
+          {config.label} week {weekNumber}
+        </strong>
+        , played {sport === "ncaaf" ? "Saturday" : "Sunday"} {shortDate(played)}.
       </p>
+      <SubmitButton className="btn" pendingLabel="Pulling...">
+        Pull {config.label} games
+      </SubmitButton>
     </form>
   );
 }
 
 function TotalsPullSection({
   groupId,
+  sport,
+  weeks,
   week,
   games,
 }: {
   groupId: string;
+  sport: Sport;
+  weeks: Week[];
   week: Week | null;
   games: Game[];
 }) {
   const [state, action] = useFormState(pullTotalsAction, IDLE);
-  const flagged = games.filter((game) => game.totals_enabled);
-  const awaiting = flagged.filter((game) => game.total_points === null);
 
-  if (!week) {
-    return <p className="text-sm text-muted">Pull a week&apos;s games first.</p>;
+  // The open week of this sport, which is the only one a total can land in.
+  const target =
+    weeks
+      .filter((entry) => entry.sport === sport && entry.opened_at && !entry.closed_at)
+      .at(-1) ?? null;
+
+  // Flag counts are only known for the week the page loaded games for.
+  const showing = target && week && target.id === week.id ? games : null;
+  const flagged = showing?.filter((game) => game.totals_enabled) ?? null;
+  const awaiting = flagged?.filter((game) => game.total_points === null) ?? null;
+
+  if (!target) {
+    return (
+      <p className="mt-6 border-t border-edge pt-4 text-sm text-muted">
+        No open {sportConfig(sport).label} week, so there is nothing to pull
+        over/unders for yet.
+      </p>
+    );
   }
 
   return (
-    <form action={action} className="space-y-3">
+    <form action={action} className="mt-6 space-y-3 border-t border-edge pt-4">
       <input type="hidden" name="groupId" value={groupId} />
-      <input type="hidden" name="weekId" value={week.id} />
-      <input type="hidden" name="sport" value={week.sport} />
+      <input type="hidden" name="weekId" value={target.id} />
+      <input type="hidden" name="sport" value={sport} />
       <Feedback state={state} />
       <p className="text-sm text-muted">
-        Turn the over/under on for the games you want it on, under Games below,
-        then pull the numbers for all of them here. One request, however many
-        games you flagged.
+        Turn the over/under on for the games you want it on, over on the Games
+        page, then fetch every number here. One request, however many games you
+        flagged.
       </p>
       <p className="text-sm">
-        {sportLabel(week.sport)} {week.label}: {flagged.length} game
-        {flagged.length === 1 ? "" : "s"} flagged
-        {awaiting.length > 0 ? `, ${awaiting.length} still without a number` : ""}.
+        {weekChoiceLabel(target)}
+        {flagged
+          ? `: ${flagged.length} game${flagged.length === 1 ? "" : "s"} flagged` +
+            (awaiting && awaiting.length > 0
+              ? `, ${awaiting.length} still without a number`
+              : "")
+          : ""}
+        .
       </p>
       <SubmitButton className="btn" pendingLabel="Pulling...">
-        Pull totals
+        Pull {sportConfig(sport).label} totals
       </SubmitButton>
     </form>
   );

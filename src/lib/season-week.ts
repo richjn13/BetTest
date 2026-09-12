@@ -120,6 +120,29 @@ export function ncaafWeekForKickoff(kickoff: Date, seasonYear?: number): SeasonW
   return { seasonYear: season, weekNumber: Math.min(16, Math.max(0, raw)) };
 }
 
+/**
+ * The main game day of a week: the Sunday for the NFL, the Saturday for
+ * college. Derived from the same anchors the week numbers come from, so it
+ * needs no schedule and works for a week that has not been pulled yet.
+ */
+export function weekPlayDateUtc(
+  seasonYear: number,
+  weekNumber: number,
+  sport: Sport,
+): Date {
+  const start =
+    sport === "ncaaf"
+      ? ncaafSeasonStartUtc(seasonYear)
+      : seasonStartUtc(seasonYear);
+  // Both weeks open on a Tuesday. Saturday is four days on, Sunday five.
+  const dayOfWeek = sport === "ncaaf" ? 4 : 5;
+  // The bye before the Super Bowl is why week 22 sits two weeks after the
+  // conference championships rather than one; the same reason weekForKickoff
+  // folds anything past 22 back onto it.
+  const bye = sport === "nfl" && weekNumber === 22 ? MS_PER_WEEK : 0;
+  return new Date(start + (weekNumber - 1) * MS_PER_WEEK + dayOfWeek * MS_PER_DAY + bye);
+}
+
 /** Week derivation for either sport. */
 export function weekForSport(
   kickoff: Date,

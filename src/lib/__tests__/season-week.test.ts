@@ -7,6 +7,7 @@ import {
   seasonYearFor,
   weekForKickoff,
   weekForSport,
+  weekPlayDateUtc,
 } from "../season-week";
 
 const at = (iso: string) => new Date(iso);
@@ -131,5 +132,25 @@ describe("weekForSport", () => {
     const saturday = at("2026-09-19T18:00:00Z");
     expect(weekForSport(saturday, "ncaaf").weekNumber).toBe(3);
     expect(weekForSport(saturday, "nfl").weekNumber).toBe(2);
+  });
+});
+
+describe("weekPlayDateUtc", () => {
+  const day = (date: Date) => date.toISOString().slice(0, 10);
+
+  it("gives the Sunday of an NFL week", () => {
+    expect(day(weekPlayDateUtc(2026, 1, "nfl"))).toBe("2026-09-13");
+    expect(day(weekPlayDateUtc(2026, 3, "nfl"))).toBe("2026-09-27");
+  });
+
+  it("gives the Saturday of a college week, week zero included", () => {
+    expect(day(weekPlayDateUtc(2026, 1, "ncaaf"))).toBe("2026-09-05");
+    expect(day(weekPlayDateUtc(2026, 0, "ncaaf"))).toBe("2026-08-29");
+  });
+
+  it("allows for the bye before the Super Bowl", () => {
+    // Conference championships are week 21; the Super Bowl is a fortnight on.
+    expect(day(weekPlayDateUtc(2026, 21, "nfl"))).toBe("2027-01-31");
+    expect(day(weekPlayDateUtc(2026, 22, "nfl"))).toBe("2027-02-14");
   });
 });

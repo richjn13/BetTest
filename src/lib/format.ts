@@ -1,4 +1,6 @@
 /** Display helpers shared by the picks board and the leaderboard. */
+import { weekPlayDateUtc } from "./season-week";
+import type { Sport } from "./sports";
 
 /**
  * The spread as it applies to one side. `homeSpread` is stored from the home
@@ -60,4 +62,28 @@ export function weekLabel(weekNumber: number, seasonType: string): string {
     default:
       return `Playoff Week ${weekNumber - 18}`;
   }
+}
+
+/** "Sep 14", in the viewer's own zone. */
+export function shortDate(date: string | Date): string {
+  const value = typeof date === "string" ? new Date(date) : date;
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(value);
+}
+
+/**
+ * How a week reads in a list: "Week 3 · Sep 14".
+ *
+ * A week number alone tells you nothing about when it is, which matters most
+ * where two competitions are numbered differently and a list runs to twenty
+ * entries. The date is the week's main game day, worked out from the calendar
+ * rather than from the games, so it is there before anything is pulled.
+ */
+export function weekChoiceLabel(week: {
+  season_year: number;
+  week_number: number;
+  sport: Sport;
+  label: string;
+}): string {
+  const played = weekPlayDateUtc(week.season_year, week.week_number, week.sport);
+  return `${week.label} · ${shortDate(played)}`;
 }

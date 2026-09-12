@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/components/SubmitButton";
-import { formatKickoff, spreadForSide } from "@/lib/format";
+import { formatKickoff, spreadForSide, weekChoiceLabel } from "@/lib/format";
 import { abbreviate, NFL_TEAMS } from "@/lib/teams";
 import { SPORTS, sportLabel, type Sport } from "@/lib/sports";
 import { effectiveSpread } from "@/lib/types";
@@ -89,7 +89,7 @@ export function GamesPanel({
           >
             {[...forSport].reverse().map((option) => (
               <option key={option.id} value={option.id}>
-                {option.season_year} · {option.label}
+                {weekChoiceLabel(option)}
                 {option.closed_at ? " · closed" : option.opened_at ? "" : " · not opened"}
               </option>
             ))}
@@ -97,7 +97,7 @@ export function GamesPanel({
         )}
       </Section>
 
-      <Section title={week ? `${sportLabel(week.sport)} ${week.label}` : "Games"}>
+      <Section title={week ? `${sportLabel(week.sport)} ${weekChoiceLabel(week)}` : "Games"}>
         <GamesSection groupId={groupId} week={week} games={games} weeks={weeks} />
       </Section>
     </div>
