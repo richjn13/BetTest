@@ -523,15 +523,15 @@ games you did pull.
 
 ### Score updates, and what they cost
 
-Scores update on their own, every five minutes while games are on, driven by a
+Scores update on their own, every half hour while games are on, driven by a
 GitHub Actions workflow that calls the app. There is no Claude involvement and
 no token cost. It is a look at the odds feed and nothing more.
 
-**The cost is odds-feed calls, and at five minutes it is real.** Each run that
-finds a game waiting on a score spends one call per sport. The windows in
-`.github/workflows/scores.yml` come to roughly 400 runs a week, so a month of
-it runs to a few thousand calls against a free tier of 500. Five-minute updates
-need a paid Odds API plan. The $30 tier covers it many times over.
+**The cost is odds-feed calls.** Each run that finds a game waiting on a score
+spends one call per sport. The windows in `.github/workflows/scores.yml` come
+to about 68 runs a week, which lands near 300 to 400 calls a month with both
+sports in play. That fits the free tier of 500, but without much room, since
+pulling lines and totals comes out of the same allowance.
 
 Three things keep that from becoming a surprise:
 
@@ -542,13 +542,13 @@ Three things keep that from becoming a surprise:
   week's lines. It says so in the workflow log rather than failing.
 - Each pull box on the admin page prints the balance before you spend it.
 
-To go back to fifteen minutes, change every `*/5` in that workflow to `*/15`.
-That is roughly a third of the calls and still keeps a Saturday current within
-a quarter of an hour.
+To update more often, change every `*/30` in that workflow. `*/15` doubles the
+calls and needs watching on the free tier; `*/5` is six times them and needs a
+paid Odds API plan, where the $30 tier covers it many times over.
 
-**Nothing else breaks at five minutes.** GitHub Actions has no run limit that
-this approaches, the app writes only what actually changed, and each run reads
-the week's games once rather than once per game.
+**Nothing else strains at this cadence.** GitHub Actions has no run limit that
+this approaches, the app writes only rows that actually changed, and each run
+reads the week's games once rather than once per game.
 
 ### Choosing the slate
 
