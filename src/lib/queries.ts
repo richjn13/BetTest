@@ -417,6 +417,7 @@ export async function getCurrentWeek(sport?: Sport): Promise<Week | null> {
       await db()
         .from("games")
         .select("week_id, kickoff_time")
+        .is("excluded_at", null)
         .gt("kickoff_time", new Date().toISOString())
         .order("kickoff_time")
         .limit(20),
@@ -435,16 +436,64 @@ const GAME_COLUMNS =
   "spread_updated_at, spread_frozen_at, frozen_home_spread, final_home_score, " +
   "final_away_score, score_overridden_at, status, odds_api_event_id, spread_locked_at, " +
   "kickoff_changed_at, last_seen_in_feed_at, home_rank, away_rank, " +
-  "total_points, frozen_total, totals_enabled";
+  "total_points, frozen_total, totals_enabled, excluded_at";
 
-export async function getGamesForWeek(weekId: string): Promise<Game[]> {
-  const result = await db()
-    .from("games")
-    .select(GAME_COLUMNS)
-    .eq("week_id", weekId)
-    .order("kickoff_time")
-    .order("home_team");
+/**
+ * A week's games. Admins ask for all of them; members only ever see the ones
+ * in the slate, which is what `inSlateOnly` is for.
+ */
+export async function getGamesForWeek(
+  weekId: string,
+  inSlateOnly = false,
+): Promise<Game[]> {
+  let query = db().from("games").select(GAME_COLUMNS).eq("week_id", weekId);
+  if (inSlateOnly) query = query.is("excluded_at", null);
+  const result = await query.order("kickoff_time").order("home_team");
   return (unwrap(result) as Game[]) ?? [];
+}
+
+/**
+ * Takes a game out of the week's slate, or puts it back.
+ *
+ * A college pull returns twenty games so there is something to choose from,
+ * and ten or so is a week worth picking. Setting one aside is not deleting it:
+ * the game stays, and can come back.
+ *
+ * Refused once anyone has picked it. Excluding a picked game would either
+ * quietly void a pick or quietly keep scoring an invisible one, and neither is
+ * something to do behind a member's back. Delete the game if you truly mean to
+ * take the picks with it.
+ */
+export async function setGameInSlate(gameId: string, inSlate: boolean): Promise<void> {
+  const game = await getGame(gameId);
+  if (!game) throw new AppError("That game no longer exists.");
+  await assertWeekOpen(game.week_id);
+
+  if (!inSlate) {
+    if (game.spread_frozen_at || !isGameOpen(game)) {
+      throw new AppError("That game has already started, so it stays in the slate.");
+    }
+    const picked = await db()
+      .from("picks")
+      .select("id", { head: true, count: "exact" })
+      .eq("game_id", gameId);
+    if (picked.error) throw new Error(picked.error.message);
+    if ((picked.count ?? 0) > 0) {
+      throw new AppError(
+        `${picked.count} pick${picked.count === 1 ? " has" : "s have"} already been made on ` +
+          "this game, so it cannot leave the slate. Delete the game if you mean to take " +
+          "those picks with it.",
+      );
+    }
+  }
+
+  unwrap(
+    await db()
+      .from("games")
+      .update({ excluded_at: inSlate ? null : new Date().toISOString() })
+      .eq("id", gameId)
+      .select("id"),
+  );
 }
 
 export async function getGame(gameId: string): Promise<Game | null> {
@@ -691,7 +740,7 @@ export async function applyTotals(
   const writes: { id: string; total: number }[] = [];
 
   for (const game of await getGamesForWeek(weekId)) {
-    if (!game.totals_enabled || game.spread_frozen_at) continue;
+    if (!game.totals_enabled || game.spread_frozen_at || game.excluded_at) continue;
 
     const found = byMatchup.get(`${game.away_team}@${game.home_team}`);
     if (found === undefined) {
@@ -793,7 +842,10 @@ export async function getWeekBoard(
   userId: string,
   weekId: string,
 ): Promise<GameCard[]> {
-  const [games, members] = await Promise.all([getGamesForWeek(weekId), getMembers(groupId)]);
+  const [games, members] = await Promise.all([
+    getGamesForWeek(weekId, true),
+    getMembers(groupId),
+  ]);
   const memberIds = members.map((member) => member.id);
   const allPicks = await getPicksForWeek(weekId, memberIds);
 

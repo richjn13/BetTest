@@ -55,6 +55,8 @@ export type Game = {
   home_rank: number | null;
   away_rank: number | null;
   /** Over/under, off unless an admin turns it on and enters a number. */
+  /** When an admin took this game out of the slate. Null means it is in. */
+  excluded_at: string | null;
   total_points: number | null;
   frozen_total: number | null;
   totals_enabled: boolean;

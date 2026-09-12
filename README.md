@@ -211,11 +211,11 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are eight files to run, in order**, all in `supabase/migrations/`:
+**There are nine files to run, in order**, all in `supabase/migrations/`:
 `0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`,
 `0004_week_snapshots.sql`, `0005_profiles.sql`, `0006_schedule_changes.sql`,
-`0007_sports_and_totals.sql`, then `0008_totals_await_number.sql`. Do the first
-one now and come back for the others.
+`0007_sports_and_totals.sql`, `0008_totals_await_number.sql`, then
+`0009_slate_choice.sql`. Do the first one now and come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -247,7 +247,8 @@ timestamps that make each week its own snapshot, `0005_profiles.sql` adds the
 name, email and avatar fields, `0006_schedule_changes.sql` adds the two stamps
 that let the app notice a moved or vanished game, `0007_sports_and_totals.sql`
 adds college football and the over/under, and `0008_totals_await_number.sql`
-lets you turn an over/under on before its number has been pulled.
+lets you turn an over/under on before its number has been pulled, and
+`0009_slate_choice.sql` lets you set a game aside without deleting it.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
@@ -482,6 +483,22 @@ Labor Day, and the late August openers are Week 0. Pull Week 0 by typing 0.
 selection you made; the feed refreshing behind it would put the other forty
 games in front of everyone. It still updates kickoff times and scores on the
 games you did pull.
+
+### Choosing the slate
+
+A college pull returns twenty games so there is something to choose from. Ten
+or so is a week worth picking, and which ten is nobody's judgement but yours.
+
+On the **Games** tab each game has **Set aside**, which takes it out of the
+week without deleting it: members stop seeing it, and it keeps its line if you
+put it back. The count beside the week heading reads "8 of 10 in the slate", so
+you can see where you are. Ten is a target, not a limit -- run twelve or six if
+you would rather.
+
+A game that somebody has already picked cannot be set aside. Excluding it would
+either void their pick or keep scoring one they can no longer see, so the app
+refuses and says how many picks are on it. Delete the game if you really mean
+to take those picks with it.
 
 ### Over/unders
 

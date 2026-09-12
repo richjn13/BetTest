@@ -21,6 +21,15 @@ const NETWORK = [
   "connection appears to be offline",
 ];
 
+/**
+ * Next replaces a server error's message in production with a paragraph
+ * explaining that it replaced the message. Printing that back to the reader
+ * fills the screen with nothing; the digest below is the part worth keeping.
+ */
+function isBoilerplate(message: string): boolean {
+  return message.includes("omitted in production");
+}
+
 function isNetworkFailure(message: string): boolean {
   const text = message.toLowerCase();
   return NETWORK.some((phrase) => text.includes(phrase));
@@ -73,7 +82,7 @@ export default function Error({
         </>
       )}
 
-      {error.message && (
+      {error.message && !isBoilerplate(error.message) && (
         <p className="mt-3 break-words rounded-lg border border-edge px-3 py-2 font-mono text-xs text-muted">
           {error.message}
         </p>

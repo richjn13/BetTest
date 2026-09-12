@@ -23,6 +23,8 @@ export type SportConfig = {
    * an admin pulled; the scheduled refresh must not add to it.
    */
   curatedSlate: boolean;
+  /** How many games make a good week to pick, where the slate is chosen. */
+  slateGoal: number | null;
   highestWeek: number;
 };
 
@@ -35,6 +37,7 @@ const SPORT_CONFIG: Record<Sport, SportConfig> = {
     saturdayOnly: false,
     ranked: false,
     curatedSlate: false,
+    slateGoal: null,
     highestWeek: 22,
   },
   ncaaf: {
@@ -45,6 +48,7 @@ const SPORT_CONFIG: Record<Sport, SportConfig> = {
     saturdayOnly: true,
     ranked: true,
     curatedSlate: true,
+    slateGoal: 10,
     highestWeek: 16,
   },
 };

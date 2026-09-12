@@ -22,6 +22,7 @@ import {
   removeUser,
   setAdmin,
   applyTotals,
+  setGameInSlate,
   setGameTotal,
   setTotalsEnabled,
   setWeekClosed,
@@ -609,6 +610,40 @@ export async function toggleTotalAction(
     return enabled
       ? "Over/under on. Pull totals to fill in the number."
       : "Over/under removed from that game.";
+  });
+}
+
+/**
+ * Takes a game out of the week's slate, or puts it back. Members see only what
+ * is in the slate; a game set aside keeps its line and can return.
+ */
+export async function setGameInSlateAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const gameId = text(form, "gameId");
+  const inSlate = text(form, "inSlate") === "true";
+
+  return run(groupId, async (actor) => {
+    const game = await getGame(gameId);
+    if (!game) throw new AppError("That game no longer exists.");
+
+    await setGameInSlate(gameId, inSlate);
+    const matchup = `${game.away_team} at ${game.home_team}`;
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: inSlate ? "add_to_slate" : "remove_from_slate",
+      gameId,
+      note: inSlate ? `${matchup} back in the slate.` : `${matchup} set aside.`,
+      details: { matchup },
+    });
+
+    return inSlate
+      ? `${matchup} is back in. Members can pick it.`
+      : `${matchup} is out. Members will not see it, and it keeps its line if you put it back.`;
   });
 }
 

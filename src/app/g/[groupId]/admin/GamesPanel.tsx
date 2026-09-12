@@ -5,7 +5,7 @@ import { useFormState } from "react-dom";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatKickoff, spreadForSide, weekChoiceLabel } from "@/lib/format";
 import { abbreviate, NFL_TEAMS } from "@/lib/teams";
-import { SPORTS, sportLabel, type Sport } from "@/lib/sports";
+import { SPORTS, sportConfig, sportLabel, type Sport } from "@/lib/sports";
 import { effectiveSpread } from "@/lib/types";
 import type { Game, Week } from "@/lib/types";
 import { IDLE } from "./state";
@@ -14,6 +14,7 @@ import {
   addGameAction,
   deleteGameAction,
   overrideGameAction,
+  setGameInSlateAction,
   setTotalAction,
   toggleTotalAction,
 } from "./actions";
@@ -97,10 +98,36 @@ export function GamesPanel({
         )}
       </Section>
 
-      <Section title={week ? `${sportLabel(week.sport)} ${weekChoiceLabel(week)}` : "Games"}>
+      <Section
+        title={week ? `${sportLabel(week.sport)} ${weekChoiceLabel(week)}` : "Games"}
+        aside={week ? <SlateCount sport={week.sport} games={games} /> : null}
+      >
         <GamesSection groupId={groupId} week={week} games={games} weeks={weeks} />
       </Section>
     </div>
+  );
+}
+
+/**
+ * How many games the pool is actually playing this week, against the number
+ * that makes a good week. The goal is a target, not a limit: a slate can be
+ * eight or fourteen, and the count is there so the choice is deliberate.
+ */
+function SlateCount({ sport, games }: { sport: Sport; games: Game[] }) {
+  const inSlate = games.filter((game) => game.excluded_at === null).length;
+  const goal = sportConfig(sport).slateGoal;
+  const met = goal !== null && inSlate >= goal;
+
+  return (
+    <span className="text-sm">
+      <strong className={met ? "text-[rgb(var(--win))]" : "text-ink"}>{inSlate}</strong>
+      <span className="text-muted">
+        {goal === null
+          ? ` game${inSlate === 1 ? "" : "s"} in the slate`
+          : ` of ${goal} in the slate`}
+        {games.length > inSlate && ` · ${games.length - inSlate} set aside`}
+      </span>
+    </span>
   );
 }
 
@@ -120,6 +147,7 @@ function GamesSection({
   const [deleteState, remove] = useFormState(deleteGameAction, IDLE);
   const [totalState, setTotal] = useFormState(setTotalAction, IDLE);
   const [toggleState, toggleTotal] = useFormState(toggleTotalAction, IDLE);
+  const [slateState, setInSlate] = useFormState(setGameInSlateAction, IDLE);
 
   const defaultYear = week?.season_year ?? new Date().getUTCFullYear();
   const defaultWeek = week?.week_number ?? 1;
@@ -217,6 +245,7 @@ function GamesSection({
         <Feedback state={deleteState} />
         <Feedback state={totalState} />
         <Feedback state={toggleState} />
+        <Feedback state={slateState} />
         {games.length === 0 ? (
           <p className="text-sm text-muted">No games in this week yet.</p>
         ) : (
@@ -231,8 +260,29 @@ function GamesSection({
                 key={game.id}
                 className={`rounded-lg border p-3 ${
                   droppedOff ? "border-[rgb(var(--loss))]/50" : "border-edge"
-                }`}
+                } ${game.excluded_at ? "opacity-60" : ""}`}
               >
+                <form action={setInSlate} className="mb-2 flex items-center gap-2">
+                  <input type="hidden" name="groupId" value={groupId} />
+                  <input type="hidden" name="gameId" value={game.id} />
+                  <input
+                    type="hidden"
+                    name="inSlate"
+                    value={game.excluded_at ? "true" : "false"}
+                  />
+                  <SubmitButton
+                    className={`btn py-1 text-sm ${
+                      game.excluded_at ? "border-accent text-accent" : "text-muted"
+                    }`}
+                    pendingLabel="Saving..."
+                  >
+                    {game.excluded_at ? "Put back in" : "Set aside"}
+                  </SubmitButton>
+                  <span className="text-xs text-muted">
+                    {game.excluded_at ? "Members cannot see this game" : "In the slate"}
+                  </span>
+                </form>
+
                 {droppedOff && (
                   <p className="mb-2 text-xs font-semibold text-[rgb(var(--loss))]">
                     Not in the latest pull. It may have come off the slate. Picks
