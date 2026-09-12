@@ -521,6 +521,19 @@ selection you made; the feed refreshing behind it would put the other forty
 games in front of everyone. It still updates kickoff times and scores on the
 games you did pull.
 
+### The picks page
+
+Across the top: **All · NCAA · NFL**. NCAA is where you land, since its weekend
+comes first. **All** stacks both open weeks in one scroll, college above the
+NFL, with a labelled rule between them. Each competition keeps its own board,
+its own picked count and its own lock, because they are separate weeks with
+separate rules. Games stay in kickoff order throughout.
+
+The spread and the over/under stay on a card for the life of the game. While it
+is on, the line sits above the live score; when it is over, the line is the
+number the pick was graded against, sitting beside the final. The over/under
+row shows its number and the combined score next to it.
+
 ### Score updates, and what they cost
 
 Scores update on their own, every half hour while games are on, driven by a

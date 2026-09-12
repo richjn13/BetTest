@@ -186,11 +186,6 @@ function GameRow({
   const spread = effectiveSpread(game);
   const countdown = timeUntil(game.kickoff_time);
 
-  // Once a game is settled the spread has done its job, and the score plus the
-  // one-line verdict say more than the number does. Hide it on a final game
-  // and across a closed week. It stays stored; it is what grading used.
-  const settled = game.status === "final" || readOnly;
-
   const outcome = describeOutcome({
     homeTeam: game.home_team,
     awayTeam: game.away_team,
@@ -248,7 +243,10 @@ function GameRow({
             key={side}
             side={side}
             game={game}
-            spread={settled ? null : spread}
+            // The line stays on screen once a game is under way and after it
+            // ends. It is the number the pick was graded against, so with a
+            // score beside it the card explains itself.
+            spread={spread}
             selected={selection?.side === side}
             covered={outcome.covered === side}
             open={open}
@@ -402,7 +400,9 @@ function TotalRow({
     <div className="flex items-center gap-2 border-t border-edge px-3 py-2">
       <span className="shrink-0 text-xs text-muted">
         O/U <span className="font-mono text-ink">{line}</span>
-        {combined !== null && <span className="ml-1 font-mono">({combined})</span>}
+        {combined !== null && (
+          <span className="ml-1 font-mono text-ink">· {combined}</span>
+        )}
       </span>
       <div className="ml-auto flex gap-1.5">
         {(["over", "under"] as const).map((side) => (
@@ -484,9 +484,10 @@ function SideButton({
         </span>
       </span>
       <span className="shrink-0 text-right">
-        {/* A settled game passes no spread, leaving the score to speak. */}
+        {/* The line sits above the score, small and quiet, so a card with
+            both on it still reads score-first. */}
         {spread !== null && (
-          <span className="block font-mono text-sm tabular-nums text-muted">
+          <span className="block font-mono text-[11px] leading-tight tabular-nums text-muted">
             {spreadForSide(spread, side)}
           </span>
         )}
