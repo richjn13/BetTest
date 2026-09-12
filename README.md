@@ -550,6 +550,10 @@ NFL, with a labelled rule between them. Each competition keeps its own board,
 its own picked count and its own lock, because they are separate weeks with
 separate rules. Games stay in kickoff order throughout.
 
+Switching tabs is immediate: both competitions arrive with the page and the tab
+only decides what is on screen. The URL keeps up without a navigation, so a
+reload lands where you were.
+
 **College cards name the school, not the mascot.** "Indiana" reads to everybody;
 "Hoosiers" does not, and there are a dozen Bulldogs. The mascot moves to the
 line underneath, and a top 25 ranking sits in front of the name: **#5 Indiana**,
@@ -567,8 +571,10 @@ row shows its number and the combined score next to it.
 Scores update two ways, and neither involves Claude or costs a token.
 
 **While anyone is watching, the page brings them current itself.** Opening the
-picks page checks the scores when a game has kicked off and has no final score
-yet, and when nobody has checked in the last ten minutes. The interval is
+picks page checks the scores when a game kicked off in the last six hours and
+has no final score yet, and when nobody has checked in the last ten minutes.
+Six hours is a game and its overrun; a game that never resolved beyond that is
+for an admin to fix, not something to spend a call on at every page view. The interval is
 claimed in the database, so ten people watching at once still spend one call,
 and nobody watching spends none at all. The page says when it last looked.
 

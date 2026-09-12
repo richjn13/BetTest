@@ -174,6 +174,14 @@ export type PendingScores = {
 export async function pendingScores(
   now: Date = new Date(),
   sport?: Sport,
+  /**
+   * How far back a kicked-off game still counts as waiting. The scheduled run
+   * uses a week, so a Sunday game that never resolved is still chased on the
+   * Tuesday. A page view uses a few hours: a game that kicked off yesterday is
+   * not being watched, and letting it count would mean every page view all week
+   * spending a call on it.
+   */
+  maxAgeMs: number = STALE_GAME_DAYS * 86_400_000,
 ): Promise<PendingScores> {
   const none: PendingScores = { count: 0, weekLabel: null, daysBack: 0 };
 
@@ -191,10 +199,7 @@ export async function pendingScores(
         .neq("status", "postponed")
         .neq("status", "canceled")
         .lte("kickoff_time", now.toISOString())
-        .gte(
-          "kickoff_time",
-          new Date(now.getTime() - STALE_GAME_DAYS * 86_400_000).toISOString(),
-        )
+        .gte("kickoff_time", new Date(now.getTime() - maxAgeMs).toISOString())
         .order("kickoff_time"),
     ) ?? [];
 

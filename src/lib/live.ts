@@ -27,6 +27,14 @@ import type { Sport } from "./sports";
 const MINUTES = Number(process.env.LIVE_REFRESH_MINUTES) || 10;
 const SLOT = "scores:last-check";
 
+/**
+ * How recently a game must have kicked off to count as one somebody is
+ * watching. Six hours covers the longest game and its overrun; beyond that it
+ * is a game that never resolved, which is the scheduled run's problem and an
+ * admin's, not something to spend a call on at every page view for a week.
+ */
+const WATCHING_WINDOW_MS = 6 * 60 * 60 * 1000;
+
 export type LiveCheck = { ran: Sport[]; lastChecked: Date | null };
 
 export async function refreshScoresIfStale(): Promise<LiveCheck> {
@@ -42,7 +50,10 @@ export async function refreshScoresIfStale(): Promise<LiveCheck> {
   try {
     const sports = await sportsWithOpenWeeks();
     const checks = await Promise.all(
-      sports.map(async (sport) => ({ sport, pending: await pendingScores(new Date(), sport) })),
+      sports.map(async (sport) => ({
+        sport,
+        pending: await pendingScores(new Date(), sport, WATCHING_WINDOW_MS),
+      })),
     );
     waiting = checks.filter((check) => check.pending.count > 0).map((check) => check.sport);
   } catch {
