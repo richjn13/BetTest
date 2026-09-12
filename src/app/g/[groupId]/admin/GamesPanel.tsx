@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -52,7 +53,12 @@ export function GamesPanel({
   return (
     <div className="space-y-4">
       <Section
-        title="Which week"
+        defaultOpen={false}
+        title={
+          week
+            ? `Showing ${sportLabel(week.sport)} ${weekChoiceLabel(week)} — tap to change`
+            : "Which week"
+        }
         aside={
           <a href={`/g/${groupId}/admin`} className="text-sm text-accent hover:underline">
             Pulls and settings
@@ -255,38 +261,39 @@ function GamesSection({
                 newestSeen !== null &&
                 (game.last_seen_in_feed_at === null || game.last_seen_in_feed_at < newestSeen);
 
-              return (
-              <li
-                key={game.id}
-                className={`rounded-lg border p-3 ${
-                  droppedOff ? "border-[rgb(var(--loss))]/50" : "border-edge"
-                } ${game.excluded_at ? "opacity-60" : ""}`}
-              >
-                <form action={setInSlate} className="mb-2 flex items-center gap-2">
-                  <input type="hidden" name="groupId" value={groupId} />
-                  <input type="hidden" name="gameId" value={game.id} />
-                  <input
-                    type="hidden"
-                    name="inSlate"
-                    value={game.excluded_at ? "true" : "false"}
-                  />
-                  <SubmitButton
-                    className={`btn py-1 text-sm ${
-                      game.excluded_at
-                        ? "border-edge text-muted"
-                        : "border-accent text-[rgb(var(--win))]"
-                    }`}
-                    pendingLabel="Saving..."
-                  >
-                    {game.excluded_at ? "Off" : "On"}
-                  </SubmitButton>
-                  <span className="text-xs text-muted">
-                    {game.excluded_at
-                      ? "Off. Members do not see this game."
-                      : "On. In this week's slate."}
-                  </span>
-                </form>
+              const flagged = [
+                droppedOff ? "off the slate" : null,
+                game.kickoff_changed_at ? "kickoff moved" : null,
+              ].filter(Boolean);
 
+              return (
+              <GameDrawer
+                key={game.id}
+                game={game}
+                warn={flagged.join(" · ")}
+                dimmed={droppedOff}
+                toggle={
+                  <form action={setInSlate}>
+                    <input type="hidden" name="groupId" value={groupId} />
+                    <input type="hidden" name="gameId" value={game.id} />
+                    <input
+                      type="hidden"
+                      name="inSlate"
+                      value={game.excluded_at ? "true" : "false"}
+                    />
+                    <SubmitButton
+                      className={`btn px-2.5 py-1 text-xs ${
+                        game.excluded_at
+                          ? "border-edge text-muted"
+                          : "border-accent text-[rgb(var(--win))]"
+                      }`}
+                      pendingLabel="..."
+                    >
+                      {game.excluded_at ? "Off" : "On"}
+                    </SubmitButton>
+                  </form>
+                }
+              >
                 {droppedOff && (
                   <p className="mb-2 text-xs font-semibold text-[rgb(var(--loss))]">
                     Not in the latest pull. It may have come off the slate. Picks
@@ -298,32 +305,10 @@ function GamesSection({
                     Kickoff has moved since this game was first listed.
                   </p>
                 )}
-                <div className="mb-2 space-y-0.5 text-sm">
-                  <p className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-mono font-semibold">
-                      {abbreviate(game.away_team)}
-                    </span>
-                    <span className="text-xs uppercase tracking-wide text-muted">away</span>
-                    <span className="text-muted">{game.away_team}</span>
-                  </p>
-                  <p className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-mono font-semibold">
-                      {abbreviate(game.home_team)}
-                    </span>
-                    <span className="text-xs uppercase tracking-wide text-muted">home</span>
-                    <span className="text-muted">{game.home_team}</span>
-                  </p>
-                  <p className="text-xs text-muted">
-                    {formatKickoff(game.kickoff_time)} ·{" "}
-                    {spreadForSide(effectiveSpread(game), "home")}
-                    {game.spread_frozen_at
-                      ? " (frozen)"
-                      : game.spread_locked_at
-                        ? " (locked)"
-                        : ""} · {game.status}
-                    {game.score_overridden_at ? " · manual" : ""}
-                  </p>
-                </div>
+                <p className="mb-2 text-xs text-muted">
+                  {game.away_team} at {game.home_team}
+                  {game.excluded_at && " · off, so members do not see it"}
+                </p>
 
                 <form action={override} className="grid grid-cols-2 gap-2 sm:grid-cols-6">
                   <input type="hidden" name="groupId" value={groupId} />
@@ -452,7 +437,7 @@ function GamesSection({
                     </SubmitButton>
                   </form>
                 </details>
-              </li>
+              </GameDrawer>
               );
             })}
           </ul>
@@ -464,6 +449,79 @@ function GamesSection({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * One game, shut until you want it.
+ *
+ * A college week is forty games, and each carries a score form, a kickoff box,
+ * an over/under control and a delete. All of it open at once is a page nobody
+ * can scan. The closed row keeps what you read -- who is playing, when, the
+ * line, the status -- and the one control you reach for most, the switch that
+ * puts a game in the week or takes it out. Everything else is a tap away.
+ */
+function GameDrawer({
+  game,
+  warn,
+  dimmed,
+  toggle,
+  children,
+}: {
+  game: Game;
+  warn: string;
+  dimmed: boolean;
+  toggle: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <li
+      className={`rounded-lg border ${
+        dimmed ? "border-[rgb(var(--loss))]/50" : "border-edge"
+      } ${game.excluded_at ? "opacity-60" : ""}`}
+    >
+      <div className="flex items-center gap-2 p-2.5">
+        <span className="shrink-0">{toggle}</span>
+
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          className="min-w-0 flex-1 text-left"
+        >
+          <span className="block truncate text-sm font-medium">
+            {abbreviate(game.away_team)} at {abbreviate(game.home_team)}
+          </span>
+          <span className="block truncate text-xs text-muted">
+            {formatKickoff(game.kickoff_time)} ·{" "}
+            {spreadForSide(effectiveSpread(game), "home")}
+            {game.spread_frozen_at ? " frozen" : game.spread_locked_at ? " locked" : ""} ·{" "}
+            {game.status}
+            {game.totals_enabled &&
+              (game.total_points === null ? " · O/U pending" : ` · O/U ${game.total_points}`)}
+            {game.score_overridden_at ? " · manual" : ""}
+          </span>
+          {warn && (
+            <span className="block truncate text-xs font-semibold text-[rgb(var(--loss))]">
+              {warn}
+            </span>
+          )}
+        </button>
+
+        <span
+          aria-hidden
+          className={`shrink-0 px-1 text-xs text-muted transition-transform ${
+            open ? "rotate-90" : ""
+          }`}
+        >
+          &#9654;
+        </span>
+      </div>
+
+      {open && <div className="border-t border-edge p-3">{children}</div>}
+    </li>
   );
 }
 

@@ -462,6 +462,12 @@ adding a game, deleting one. It holds both competitions, with tabs for NFL and
 NCAA and a week list under each. This is the page in constant use during a
 weekend, and every edit on it reloads it.
 
+Every game is a closed drawer. The row you see carries who is playing, the
+kickoff, the line, the status, the over/under if there is one, and the On/Off
+switch, since that is the control you reach for most. Tap the row for the score
+form, the kickoff box, the over/under controls and the rest. Forty college
+games read as forty lines rather than forty forms.
+
 **Admin** is everything that is decided once: pulling a week's games, pulling
 totals, opening and closing weeks, the join code, invites, members, pick
 corrections, points adjustments and the audit log.
