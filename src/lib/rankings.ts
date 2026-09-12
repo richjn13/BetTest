@@ -84,7 +84,10 @@ export function rankFor(feedName: string, poll: PollEntry[]): number | null {
  * Costs nothing and cannot hallucinate, which is the point: it is the free
  * alternative to asking a model to go and look.
  */
-export function parsePastedPoll(text: string): PollEntry[] {
+export function parsePastedPoll(
+  text: string,
+  options: { sequential?: boolean } = {},
+): PollEntry[] {
   const entries: PollEntry[] = [];
   const taken = new Set<number>();
 
@@ -93,7 +96,12 @@ export function parsePastedPoll(text: string): PollEntry[] {
     if (!match) continue;
 
     const rank = Number(match[1]);
-    if (!Number.isInteger(rank) || rank < 1 || rank > 25 || taken.has(rank)) continue;
+    if (!Number.isInteger(rank) || rank < 1 || rank > 25) continue;
+    // Reading a page, a stray number must not claim a rank and lock the real
+    // row out of it -- the caller's sequence check decides what counts. In a
+    // pasted poll there is no furniture, so the first line to claim a rank
+    // keeps it.
+    if (!options.sequential && taken.has(rank)) continue;
 
     // Trailing records, vote counts and previous rankings are not the name.
     const team = match[2]
@@ -107,9 +115,46 @@ export function parsePastedPoll(text: string): PollEntry[] {
       .trim();
     if (team.length < 2 || team.length > 60) continue;
 
-    taken.add(rank);
+    if (!options.sequential) taken.add(rank);
     entries.push({ rank, team });
   }
 
-  return entries.sort((a, b) => a.rank - b.rank);
+  // A page read top to bottom has to keep its order so the sequence check can
+  // work; a pasted poll may arrive in any order, so it is sorted.
+  return options.sequential ? entries : entries.sort((a, b) => a.rank - b.rank);
+}
+
+/**
+ * Reads a Top 25 out of a web page.
+ *
+ * The markup of a rankings page is nobody's contract and will change, so this
+ * does not depend on it: scripts and styles are dropped, every tag becomes a
+ * space or a line break, and what is left is read as lines the same way a
+ * pasted poll is.
+ *
+ * The one thing it insists on is a sequence. A page is full of stray numbers --
+ * navigation, dates, scores -- so a line only counts when its number is the
+ * next rank expected, starting at 1. A heading that happens to say "3" cannot
+ * claim third place, because second place has not been seen yet.
+ */
+export function pollFromHtml(html: string): PollEntry[] {
+  const text = html
+    .replace(/<(script|style|noscript)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<\/(tr|li|p|h[1-6]|div|section)\s*>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;?/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#0?39;|&apos;|&rsquo;/gi, "'")
+    .replace(/&[a-z]+;/gi, " ");
+
+  const entries: PollEntry[] = [];
+  let expected = 1;
+
+  for (const entry of parsePastedPoll(text, { sequential: true })) {
+    if (entry.rank !== expected) continue;
+    entries.push(entry);
+    expected += 1;
+  }
+  return entries;
 }

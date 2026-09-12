@@ -23,6 +23,18 @@ const MAX_TURNS = 4;
 const MAX_SEARCHES = 3;
 
 /**
+ * A hard ceiling on what one pull may spend.
+ *
+ * Web search is expensive in a way that is not obvious from the outside: the
+ * pages it reads land in the context, and a single bounded search has been
+ * measured here at over two hundred thousand tokens on a run that returned
+ * nothing at all. Capping the searches was not enough, so the spend itself is
+ * counted between turns and the run stops when it passes this. Override with
+ * CLAUDE_PULL_TOKEN_BUDGET.
+ */
+const TOKEN_BUDGET = Number(process.env.CLAUDE_PULL_TOKEN_BUDGET) || 120_000;
+
+/**
  * The model reports its findings by calling this tool. We never execute it --
  * reading the arguments is the point. `strict` makes the API guarantee the
  * arguments match this schema, so the only checking left to do is whether the
@@ -208,6 +220,19 @@ export async function pullLinesWithClaude(
       );
       if (call) {
         return { ...validate(call.input, seasonYear, weekNumber, sport), inputTokens, outputTokens };
+      }
+
+      // Stop before starting a turn that would spend more on top of this.
+      if (inputTokens + outputTokens >= TOKEN_BUDGET) {
+        return {
+          ...empty,
+          inputTokens,
+          outputTokens,
+          error:
+            `Stopped at ${(inputTokens + outputTokens).toLocaleString()} tokens without a ` +
+            "result, to avoid spending more. Pull from the odds feed instead, or add the " +
+            "games by hand.",
+        };
       }
 
       // A server tool ran out of its turn budget. Push the turn back to resume.

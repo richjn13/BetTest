@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { db, unwrap } from "@/lib/db";
 import { gradeResolvedGames } from "@/lib/grading";
 import { pullLinesWithClaude } from "@/lib/claude-odds";
-import { fetchApTop25 } from "@/lib/claude-ranks";
+import { fetchPollFromWeb } from "@/lib/poll-source";
 import { parsePastedPoll } from "@/lib/rankings";
 import { pullLinesFromFeed, pullTotalsFromFeed, type Quota } from "@/lib/odds";
 import { runRefresh, summarize } from "@/lib/refresh";
@@ -696,8 +696,8 @@ export async function savePollAction(
 }
 
 /**
- * Fetches the poll with one bounded search, for when pasting is inconvenient.
- * Deliberate and once a week, rather than on every pull as it used to be.
+ * Reads the poll off a rankings page. Costs nothing: no model, one HTTP
+ * request, and the parsing happens here.
  */
 export async function fetchPollAction(
   _previous: AdminState,
@@ -710,30 +710,22 @@ export async function fetchPollAction(
   return run(groupId, async (actor) => {
     if (!seasonYear || weekNumber === null) throw new AppError("Pick a season and week.");
 
-    const found = await fetchApTop25(seasonYear, weekNumber);
-    const cost = tokenNote(found.inputTokens, found.outputTokens);
+    const found = await fetchPollFromWeb();
     if (found.entries.length === 0) {
-      throw new AppError(`${found.error ?? "Nothing came back."}${cost}`);
+      throw new AppError(found.error ?? "Nothing came back from the rankings page.");
     }
 
-    await savePoll(seasonYear, weekNumber, found.entries, "claude");
+    await savePoll(seasonYear, weekNumber, found.entries, "ncaa.com");
     await logAdminAction({
       groupId,
       actorUserId: actor.id,
       actorUsername: actor.username,
       action: "save_poll",
-      note: `AP Top 25 fetched for ${seasonYear} week ${weekNumber}.`,
-      details: {
-        seasonYear,
-        weekNumber,
-        ranked: found.entries.length,
-        source: "claude",
-        inputTokens: found.inputTokens,
-        outputTokens: found.outputTokens,
-      },
+      note: `AP Top 25 read from the rankings page for ${seasonYear} week ${weekNumber}.`,
+      details: { seasonYear, weekNumber, ranked: found.entries.length, url: found.url },
     });
 
-    return `Stored ${found.entries.length} ranked teams, top of the list ${found.entries[0].team}.${cost} Pulls of this week now use them for nothing.`;
+    return `Read ${found.entries.length} ranked teams, top of the list ${found.entries[0].team}. No tokens spent. Pulls of this week now use them for nothing.`;
   });
 }
 

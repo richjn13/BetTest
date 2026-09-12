@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSchool, parsePastedPoll, rankFor, readPoll } from "../rankings";
+import {
+  normalizeSchool,
+  parsePastedPoll,
+  pollFromHtml,
+  rankFor,
+  readPoll,
+} from "../rankings";
 
 const poll = [
   { rank: 1, team: "Ohio State" },
@@ -85,5 +91,46 @@ describe("parsePastedPoll", () => {
 
   it("returns nothing for text that is not a poll", () => {
     expect(parsePastedPoll("no numbers here at all")).toEqual([]);
+  });
+});
+
+describe("pollFromHtml", () => {
+  const page = (rows: string) => `
+    <html><head><style>.r1 { color: red }</style>
+    <script>var week = 3; var top = "1. Nobody";</script></head>
+    <body><nav><a href="/x">3 Scores</a></nav>
+    <h2>Week 3 rankings</h2>
+    <table><thead><tr><th>Rank</th><th>School</th><th>Record</th></tr></thead>
+    <tbody>${rows}</tbody></table></body></html>`;
+
+  const row = (rank: number, school: string, record: string, points: string) =>
+    `<tr><td>${rank}</td><td>${school}</td><td>${record}</td><td>${points}</td></tr>`;
+
+  it("reads a rankings table out of surrounding page furniture", () => {
+    const html = page(
+      row(1, "Ohio State", "12-0", "1,550") +
+        row(2, "Texas A&amp;M", "11-1", "1,480") +
+        row(3, "Georgia", "11-1", "1,402"),
+    );
+    expect(pollFromHtml(html)).toEqual([
+      { rank: 1, team: "Ohio State" },
+      { rank: 2, team: "Texas A&M" },
+      { rank: 3, team: "Georgia" },
+    ]);
+  });
+
+  it("ignores a stray number that does not continue the sequence", () => {
+    // The nav link "3 Scores" appears before rank 1 and must not take third.
+    const entries = pollFromHtml(page(row(1, "Alabama", "10-2", "1,500")));
+    expect(entries).toEqual([{ rank: 1, team: "Alabama" }]);
+  });
+
+  it("stops at the first gap rather than mis-numbering the rest", () => {
+    const html = page(row(1, "Oregon", "12-0", "1,550") + row(3, "Georgia", "11-1", "1,402"));
+    expect(pollFromHtml(html)).toEqual([{ rank: 1, team: "Oregon" }]);
+  });
+
+  it("returns nothing for a page with no rankings in it", () => {
+    expect(pollFromHtml("<html><body><p>Nothing here</p></body></html>")).toEqual([]);
   });
 });

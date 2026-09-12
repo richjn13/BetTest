@@ -493,11 +493,24 @@ one HTTP request, no model, a second or two. Earlier versions fetched the AP
 poll with a web search on every college pull, which is what made an NCAA pull
 slow and expensive next to an instant NFL one.
 
-**Rankings are stored once a week**, in the Rankings box under Pull NCAA. Paste
-a Top 25 in from anywhere -- each line needs a number and a school, and
-records, vote totals and brackets are ignored -- and it costs nothing. The
-"fetch with Claude" button is there for when pasting is awkward: one bounded
-search, and it reports what it cost in tokens.
+**Rankings are stored once a week**, in the Rankings box under Pull NCAA, and
+neither way of getting them costs a token. **Read them from ncaa.com** fetches
+the AP rankings page and parses it here. **Paste the Top 25** takes a poll
+copied from anywhere: each line needs a number and a school, and records, vote
+totals and brackets are ignored.
+
+If the rankings page moves, set `AP_POLL_URL` in Vercel to another one. The
+parser does not depend on that page's markup -- it strips the tags and reads
+the numbered lines -- so most rankings pages will work. It refuses anything
+that yields fewer than ten teams rather than storing nonsense.
+
+**A warning about Claude web search.** It is the one expensive thing in this
+app, and not obviously so: the pages it reads land in its context. One bounded
+single-search run was measured here at 231,056 tokens, and it came back with
+nothing. That is why nothing uses it automatically any more. The "Claude web
+search" option under Where from is the only remaining use, it is there for a
+week the odds feed has not posted, and it stops itself at
+`CLAUDE_PULL_TOKEN_BUDGET` tokens (120,000 by default) rather than running on.
 
 **College week numbers.** College football plays a Week 0 in late August, so the
 app numbers its weeks the way the sport does: Week 1 is the weekend that ends on

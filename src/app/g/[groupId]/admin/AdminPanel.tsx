@@ -338,8 +338,13 @@ function GamesPullSection({
           <label className="label">Where from</label>
           <select name="source" defaultValue="feed" className="field">
             <option value="feed">The odds feed &mdash; one call, exact names</option>
-            <option value="claude">Claude web search &mdash; no feed calls, slower</option>
+            <option value="claude">Claude web search &mdash; no feed calls, costs tokens</option>
           </select>
+          <p className="mt-1 text-xs text-muted">
+            Claude web search reads betting pages into its context, which runs to
+            hundreds of thousands of tokens. It stops itself at a budget. Use it
+            only when the feed has no games for the week.
+          </p>
           <div className="mt-1">
             <QuotaLine quota={quota} />
           </div>
@@ -425,12 +430,12 @@ function RankingsSection({
         <input type="hidden" name="groupId" value={groupId} />
         <input type="hidden" name="seasonYear" value={seasonYear} />
         <input type="hidden" name="weekNumber" value={weekNumber} />
-        <SubmitButton className="btn py-1 text-sm text-muted" pendingLabel="Searching...">
-          Or fetch with Claude
+        <SubmitButton className="btn py-1 text-sm" pendingLabel="Reading...">
+          Or read them from ncaa.com
         </SubmitButton>
         <p className="mt-1 text-xs text-muted">
-          One search, and it reports what it cost. Only worth it when pasting is
-          awkward.
+          One request to the AP rankings page, parsed here. No model, no tokens.
+          Set AP_POLL_URL to read a different page.
         </p>
       </form>
     </div>
