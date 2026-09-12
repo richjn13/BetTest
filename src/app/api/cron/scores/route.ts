@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
+import { probeOddsFeed } from "@/lib/odds";
 import { sportsWithOpenWeeks } from "@/lib/queries";
 import { runRefresh } from "@/lib/refresh";
+
+/**
+ * Stop spending on scores when the month's allowance runs this low, so there
+ * is always enough left to pull next week's lines by hand. Scores lag; a week
+ * with no lines cannot be played at all. Override with ODDS_API_MIN_REMAINING.
+ */
+const MIN_REMAINING = Number(process.env.ODDS_API_MIN_REMAINING) || 50;
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -34,6 +42,27 @@ export async function GET(request: Request): Promise<NextResponse> {
       { status: 500 },
     );
   }
+  // Reading the balance is free -- the feed's listing endpoint is not billed --
+  // and it is what keeps a five-minute schedule from quietly eating the month.
+  const probe = sports.length > 0 ? await probeOddsFeed() : null;
+  const remaining = probe?.quota.remaining ?? null;
+
+  if (remaining !== null && remaining < MIN_REMAINING) {
+    return NextResponse.json(
+      {
+        ok: true,
+        held: true,
+        remaining,
+        note:
+          `Only ${remaining} odds-feed calls left this month, below the floor of ` +
+          `${MIN_REMAINING}. Scores are on hold so the rest stays available for ` +
+          "pulling lines. Enter finals by hand, or raise the plan.",
+        at: new Date().toISOString(),
+      },
+      { status: 200 },
+    );
+  }
+
   const runs = [];
   for (const sport of sports) {
     const result = await runRefresh("scores", sport);
@@ -52,7 +81,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const failed = runs.some((run) => !run.ok);
   return NextResponse.json(
-    { ok: !failed, runs, at: new Date().toISOString() },
+    { ok: !failed, runs, remaining, at: new Date().toISOString() },
     { status: 200 },
   );
 }

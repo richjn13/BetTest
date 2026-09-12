@@ -1,4 +1,4 @@
-import type { GameCard, Side } from "./types";
+import type { GameCard, Side, TotalSide } from "./types";
 
 /**
  * The picks a board holds while you tap around, kept separate from the
@@ -10,7 +10,12 @@ import type { GameCard, Side } from "./types";
  * another produces counts like "15 of 14" and games that claim you never
  * picked them.
  */
-export type Selection = { side: Side | null; isLock: boolean };
+export type Selection = {
+  side: Side | null;
+  isLock: boolean;
+  /** The over/under pick, which is a separate market on the same game. */
+  total: TotalSide | null;
+};
 export type Selections = Record<string, Selection>;
 
 export function initialSelections(cards: GameCard[]): Selections {
@@ -18,9 +23,12 @@ export function initialSelections(cards: GameCard[]): Selections {
     cards.map((card) => [
       card.game.id,
       {
-        // The board's own pick is always a spread pick; totals are separate.
+        // The spread pick and the over/under are two picks on one game, and
+        // the board holds both: a tap that only reached the server would not
+        // paint until the page was reloaded.
         side: (card.pick?.picked_side as Side | undefined) ?? null,
         isLock: card.pick?.is_lock ?? false,
+        total: (card.totalPick?.picked_side as TotalSide | undefined) ?? null,
       },
     ]),
   );

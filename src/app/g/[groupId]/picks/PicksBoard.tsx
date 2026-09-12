@@ -92,8 +92,12 @@ export function PicksBoard({
   };
 
   const pickTotal = (gameId: string, side: TotalSide) => {
-    // Totals carry no week-wide rule, so there is nothing to roll back to.
-    save(gameId, side, selections);
+    const previous = selections;
+    setSelections((current) => ({
+      ...current,
+      [gameId]: { ...current[gameId], total: side },
+    }));
+    save(gameId, side, previous);
   };
 
   const toggleLock = (gameId: string) => {
@@ -277,7 +281,12 @@ function GameRow({
         </div>
       )}
 
-      <TotalRow card={card} open={open} onPick={onPickTotal} />
+      <TotalRow
+        card={card}
+        open={open}
+        chosen={selection?.total ?? null}
+        onPick={onPickTotal}
+      />
 
       {outcome.line && (
         <div className="border-t border-edge bg-surface/60 px-3 py-2.5 text-xs">
@@ -368,10 +377,13 @@ function Consensus({
 function TotalRow({
   card,
   open,
+  chosen,
   onPick,
 }: {
   card: GameCard;
   open: boolean;
+  /** From the board's own state, so a tap paints before the server answers. */
+  chosen: TotalSide | null;
   onPick: (side: TotalSide) => void;
 }) {
   const { game, totalPick } = card;
@@ -380,7 +392,6 @@ function TotalRow({
   const line = effectiveTotal(game);
   if (line === null) return null;
 
-  const chosen = totalPick?.picked_side as TotalSide | undefined;
   const points = totalPick?.points_awarded === null ? null : Number(totalPick?.points_awarded);
   const combined =
     game.final_home_score !== null && game.final_away_score !== null

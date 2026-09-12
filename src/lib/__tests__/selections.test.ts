@@ -25,8 +25,8 @@ describe("initialSelections", () => {
       card("b"),
     ]);
     expect(selections).toEqual({
-      a: { side: "away", isLock: true },
-      b: { side: null, isLock: false },
+      a: { side: "away", isLock: true, total: null },
+      b: { side: null, isLock: false, total: null },
     });
   });
 
@@ -61,8 +61,8 @@ describe("countPicked", () => {
     expect(countPicked({})).toBe(0);
     expect(
       countPicked({
-        a: { side: "home", isLock: false },
-        b: { side: null, isLock: false },
+        a: { side: "home", isLock: false, total: null },
+        b: { side: null, isLock: false, total: null },
       }),
     ).toBe(1);
   });
@@ -70,9 +70,9 @@ describe("countPicked", () => {
 
 describe("withLockOn", () => {
   const base = {
-    a: { side: "home" as const, isLock: true },
-    b: { side: "away" as const, isLock: false },
-    c: { side: null, isLock: false },
+    a: { side: "home" as const, isLock: true, total: null },
+    b: { side: "away" as const, isLock: false, total: "over" as const },
+    c: { side: null, isLock: false, total: null },
   };
 
   it("moves the lock, leaving only one", () => {
@@ -88,8 +88,13 @@ describe("withLockOn", () => {
     expect(next.b.side).toBe("away");
   });
 
+  it("leaves the over/under picks alone, since the lock is a spread pick", () => {
+    const next = withLockOn(base, "a", true);
+    expect(next.b.total).toBe("over");
+  });
+
   it("takes the home side when locking a game with no pick yet", () => {
-    expect(withLockOn(base, "c", true).c).toEqual({ side: "home", isLock: true });
+    expect(withLockOn(base, "c", true).c).toEqual({ side: "home", isLock: true, total: null });
   });
 
   it("clears the lock without touching anything else", () => {

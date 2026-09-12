@@ -1,12 +1,22 @@
-# Pulls scores every 15 minutes while games are on.
+# Pulls scores every five minutes while games are on.
 #
 # Vercel's Hobby plan allows one cron run a day, which is not enough to keep a
-# Sunday current. GitHub Actions has no such limit, and a curl costs a few
-# seconds, so this stays inside the free allowance on a private repository.
+# Saturday or a Sunday current. GitHub Actions has no such limit, and a curl
+# costs a few seconds, so the runner time stays inside the free allowance on a
+# private repository.
 #
-# It only runs during game windows. Polling around the clock would spend about
-# 2,900 calls a month against a free Odds API tier of 500; these windows spend
-# roughly 330.
+# THE COST IS NOT THE RUNNER, IT IS THE ODDS FEED. Each run that finds a game
+# waiting on a score spends one call per sport, against a free tier of 500 a
+# month. These windows come to roughly 400 runs a week. That is well past the
+# free tier and needs a paid Odds API plan; the $30 tier covers it many times
+# over.
+#
+# Two things stop that becoming a surprise. A run spends nothing when no game
+# in an open week is actually waiting on a score, and the endpoint refuses to
+# spend at all once the month's balance falls below ODDS_API_MIN_REMAINING
+# (50 by default), so pulling next week's lines is always still possible.
+#
+# To go back to fifteen minutes, change every */5 below to */15.
 #
 # Two repository secrets are required, under Settings -> Secrets and variables
 # -> Actions:
@@ -19,11 +29,13 @@ name: Update scores
 on:
   schedule:
     # All times UTC. GitHub runs these on a best-effort basis and can be a few
-    # minutes late when it is busy.
-    - cron: "*/15 17-23 * * 0"   # Sunday afternoon and evening games
-    - cron: "*/15 0-3 * * 1"     # Sunday night game, which runs past midnight UTC
-    - cron: "*/15 0-3 * * 5"     # Thursday night game
-    - cron: "*/15 0-3 * * 2"     # Monday night game
+    # minutes late when it is busy, so treat five minutes as a floor.
+    - cron: "*/5 16-23 * * 6"    # College Saturday, noon ET to evening
+    - cron: "*/5 0-6 * * 0"      # College Saturday night, which runs past midnight UTC
+    - cron: "*/5 17-23 * * 0"    # NFL Sunday afternoon and evening
+    - cron: "*/5 0-3 * * 1"      # Sunday night game
+    - cron: "*/5 0-3 * * 5"      # Thursday night games, both sports
+    - cron: "*/5 0-3 * * 2"      # Monday night game
   # Lets you trigger a refresh by hand from the Actions tab, phone included.
   workflow_dispatch:
 

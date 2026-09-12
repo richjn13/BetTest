@@ -521,6 +521,35 @@ selection you made; the feed refreshing behind it would put the other forty
 games in front of everyone. It still updates kickoff times and scores on the
 games you did pull.
 
+### Score updates, and what they cost
+
+Scores update on their own, every five minutes while games are on, driven by a
+GitHub Actions workflow that calls the app. There is no Claude involvement and
+no token cost. It is a look at the odds feed and nothing more.
+
+**The cost is odds-feed calls, and at five minutes it is real.** Each run that
+finds a game waiting on a score spends one call per sport. The windows in
+`.github/workflows/scores.yml` come to roughly 400 runs a week, so a month of
+it runs to a few thousand calls against a free tier of 500. Five-minute updates
+need a paid Odds API plan. The $30 tier covers it many times over.
+
+Three things keep that from becoming a surprise:
+
+- A run spends nothing when no game in an open week is actually waiting on a
+  score, which is most runs at the edges of a window.
+- The endpoint refuses to spend once the month's balance falls below
+  `ODDS_API_MIN_REMAINING`, 50 by default, so you can always still pull next
+  week's lines. It says so in the workflow log rather than failing.
+- Each pull box on the admin page prints the balance before you spend it.
+
+To go back to fifteen minutes, change every `*/5` in that workflow to `*/15`.
+That is roughly a third of the calls and still keeps a Saturday current within
+a quarter of an hour.
+
+**Nothing else breaks at five minutes.** GitHub Actions has no run limit that
+this approaches, the app writes only what actually changed, and each run reads
+the week's games once rather than once per game.
+
 ### Choosing the slate
 
 Ten or so games is a week worth picking, and which ten is nobody's judgement
