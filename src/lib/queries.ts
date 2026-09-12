@@ -519,52 +519,18 @@ export async function applyLockedLines(
   };
   const seen = new Set<string>();
 
+  // Decide everything first, write afterwards. A twenty game slate was making
+  // forty round trips one after another, each waiting on the last, which is
+  // most of a minute on a bad connection and the sort of thing that outlasts a
+  // serverless function.
+  const updates: { id: string; patch: Record<string, unknown> }[] = [];
+  const inserts: Record<string, unknown>[] = [];
+
   for (const game of games) {
     const match = byMatchup.get(`${game.awayTeam}@${game.homeTeam}`);
 
-    if (match) {
-      // Frozen, already under way, or already resolved: leave it alone. Only
-      // spread_frozen_at is set by the scheduled freeze, so a game that
-      // reached kickoff before any run happened would otherwise have its line
-      // and kickoff rewritten by a re-pull.
-      if (
-        match.spread_frozen_at ||
-        match.status !== "scheduled" ||
-        new Date(match.kickoff_time).getTime() <= Date.now()
-      ) {
-        counts.skippedFrozen += 1;
-        continue;
-      }
-      const timeMoved = match.kickoff_time !== game.kickoffIso;
-      unwrap(
-        await db()
-          .from("games")
-          .update({
-            home_spread: game.homeSpread,
-            kickoff_time: game.kickoffIso,
-            spread_source: source,
-            spread_updated_at: now,
-            spread_locked_at: now,
-            last_seen_in_feed_at: now,
-            home_rank: game.homeRank,
-            away_rank: game.awayRank,
-            ...(timeMoved ? { kickoff_changed_at: now } : {}),
-          })
-          .eq("id", match.id)
-          .is("spread_frozen_at", null)
-          .select("id"),
-      );
-      counts.updated += 1;
-      seen.add(match.id);
-      if (timeMoved) {
-        counts.movedKickoff.push(`${game.awayTeam} at ${game.homeTeam}`);
-      }
-      continue;
-    }
-
-    const insert = await db()
-      .from("games")
-      .insert({
+    if (!match) {
+      inserts.push({
         week_id: weekId,
         home_team: game.homeTeam,
         away_team: game.awayTeam,
@@ -576,9 +542,73 @@ export async function applyLockedLines(
         last_seen_in_feed_at: now,
         home_rank: game.homeRank,
         away_rank: game.awayRank,
-      })
-      .select("id");
-    if (!insert.error) counts.inserted += 1;
+      });
+      continue;
+    }
+
+    // Frozen, already under way, or already resolved: leave it alone. Only
+    // spread_frozen_at is set by the scheduled freeze, so a game that reached
+    // kickoff before any run happened would otherwise have its line and
+    // kickoff rewritten by a re-pull.
+    if (
+      match.spread_frozen_at ||
+      match.status !== "scheduled" ||
+      new Date(match.kickoff_time).getTime() <= Date.now()
+    ) {
+      counts.skippedFrozen += 1;
+      continue;
+    }
+
+    seen.add(match.id);
+    const timeMoved = match.kickoff_time !== game.kickoffIso;
+    if (timeMoved) counts.movedKickoff.push(`${game.awayTeam} at ${game.homeTeam}`);
+
+    updates.push({
+      id: match.id,
+      patch: {
+        home_spread: game.homeSpread,
+        kickoff_time: game.kickoffIso,
+        spread_source: source,
+        spread_updated_at: now,
+        spread_locked_at: now,
+        last_seen_in_feed_at: now,
+        home_rank: game.homeRank,
+        away_rank: game.awayRank,
+        ...(timeMoved ? { kickoff_changed_at: now } : {}),
+      },
+    });
+  }
+
+  // Every new game in one statement.
+  if (inserts.length > 0) {
+    const bulk = await db().from("games").insert(inserts).select("id");
+    if (bulk.error) {
+      // One bad row rejects the whole statement, so fall back to inserting
+      // them singly and keep whatever is good.
+      for (const row of inserts) {
+        const one = await db().from("games").insert(row).select("id");
+        if (!one.error) counts.inserted += 1;
+      }
+    } else {
+      counts.inserted = bulk.data?.length ?? inserts.length;
+    }
+  }
+
+  // The updates stay one statement each, because each carries the guard that
+  // refuses to touch a line frozen since this run started reading. They go out
+  // together rather than in single file, which is where the time went.
+  const results = await Promise.all(
+    updates.map((update) =>
+      db()
+        .from("games")
+        .update(update.patch)
+        .eq("id", update.id)
+        .is("spread_frozen_at", null)
+        .select("id"),
+    ),
+  );
+  for (const result of results) {
+    if (!result.error && result.data && result.data.length > 0) counts.updated += 1;
   }
 
   // Anything already in the week that this pull never mentioned has come off
@@ -658,28 +688,33 @@ export async function applyTotals(
     totals.map((entry) => [`${entry.awayTeam}@${entry.homeTeam}`, entry.total]),
   );
   const counts = { filled: 0, unchanged: 0, waiting: [] as string[] };
+  const writes: { id: string; total: number }[] = [];
 
   for (const game of await getGamesForWeek(weekId)) {
-    if (!game.totals_enabled) continue;
-    if (game.spread_frozen_at) continue;
+    if (!game.totals_enabled || game.spread_frozen_at) continue;
 
     const found = byMatchup.get(`${game.away_team}@${game.home_team}`);
     if (found === undefined) {
       counts.waiting.push(`${game.away_team} at ${game.home_team}`);
-      continue;
-    }
-    if (game.total_points !== null && Number(game.total_points) === found) {
+    } else if (game.total_points !== null && Number(game.total_points) === found) {
       counts.unchanged += 1;
-      continue;
+    } else {
+      writes.push({ id: game.id, total: found });
     }
+  }
 
-    const update = await db()
-      .from("games")
-      .update({ total_points: found })
-      .eq("id", game.id)
-      .is("spread_frozen_at", null)
-      .select("id");
-    if (!update.error) counts.filled += 1;
+  const results = await Promise.all(
+    writes.map((write) =>
+      db()
+        .from("games")
+        .update({ total_points: write.total })
+        .eq("id", write.id)
+        .is("spread_frozen_at", null)
+        .select("id"),
+    ),
+  );
+  for (const result of results) {
+    if (!result.error && result.data && result.data.length > 0) counts.filled += 1;
   }
 
   return counts;

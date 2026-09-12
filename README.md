@@ -835,6 +835,7 @@ the rows below are things it will find for you.
 | A Claude pull says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
 | A page 500s instantly, with no outgoing requests in the Vercel log | The page's module failed to load, so nothing ran. Read the Vercel log for the reason. One cause is a `"use server"` file exporting anything other than an async function, which `npm test` now checks for. |
 | The Vercel deploy fails naming `maxDuration` | You are on Hobby, which caps a function at 60 seconds. Change both `maxDuration` exports from 300 to 60, or upgrade to Pro. |
+| "That didn't get through", or "Load failed" | The browser's request never completed: a dropped connection, a phone switching networks, or a deploy landing mid-request. Nothing is wrong with the pool. Reload and check whether the work happened before pressing the button again. |
 | A button shows an error, but the work actually happened | A timeout, not a failure. The job finished server-side after the response gave up. Reload and check before pressing again. Vercel's default is 10 seconds on Hobby; the admin page now asks for 60, its ceiling. A search-backed Claude pull can still exceed that, in which case pull one week at a time or move to Pro. |
 | `Missing required environment variable ...` | That variable is not set in Vercel, or you added it and did not redeploy. |
 | `relation "groups" does not exist` | The SQL from step 2 did not run. Open Supabase's Table Editor and confirm the seven tables are there. |
