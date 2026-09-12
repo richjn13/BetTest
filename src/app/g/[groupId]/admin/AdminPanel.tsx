@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -7,7 +8,7 @@ import { InviteMessage } from "./InviteMessage";
 import { formatKickoff, formatPoints, spreadForSide } from "@/lib/format";
 import { abbreviate } from "@/lib/teams";
 import { NFL_TEAMS } from "@/lib/teams";
-import { SPORTS, sportLabel } from "@/lib/sports";
+import { SPORTS, sportConfig, sportLabel, type Sport } from "@/lib/sports";
 import { effectiveSpread } from "@/lib/types";
 import type {
   AdminAction,
@@ -25,11 +26,13 @@ import {
   deleteGameAction,
   editPickAction,
   overrideGameAction,
-  pullLinesAction,
+  pullGamesAction,
+  pullTotalsAction,
   regenerateCodeAction,
   removeUserAction,
   setAdminAction,
   setTotalAction,
+  toggleTotalAction,
   setWeekClosedAction,
   syncOddsAction,
 } from "./actions";
@@ -65,8 +68,12 @@ export function AdminPanel(props: Props) {
         />
       </Section>
 
-      <Section title="Lines">
-        <PullSection groupId={group.id} week={week} />
+      <Section title="Pull games">
+        <GamesPullSection groupId={group.id} week={week} />
+      </Section>
+
+      <Section title="Pull totals">
+        <TotalsPullSection groupId={group.id} week={week} games={games} />
       </Section>
 
       <Section title="Week status">
@@ -244,33 +251,41 @@ function WeekStatusSection({ groupId, weeks }: { groupId: string; weeks: Week[] 
   );
 }
 
-function PullSection({ groupId, week }: { groupId: string; week: Week | null }) {
-  const [state, action] = useFormState(pullLinesAction, IDLE);
+function GamesPullSection({ groupId, week }: { groupId: string; week: Week | null }) {
+  const [state, action] = useFormState(pullGamesAction, IDLE);
+  const [sport, setSport] = useState<Sport>(week?.sport ?? "nfl");
   const defaultYear = week?.season_year ?? new Date().getUTCFullYear();
   const defaultWeek = week?.week_number ?? 1;
+  const config = sportConfig(sport);
 
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="groupId" value={groupId} />
       <Feedback state={state} />
       <p className="text-sm text-muted">
-        Claude searches for the week&apos;s spreads and writes what it finds. Each
-        line is locked at the moment of the pull: the odds feed leaves it alone,
-        and only another pull replaces it.
+        Writes the week&apos;s games and spreads. Each line is locked at the
+        moment of the pull: the odds feed leaves it alone, and only another pull
+        replaces it.
       </p>
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className="label">Competition</label>
-          <select name="sport" defaultValue={week?.sport ?? "nfl"} className="field">
-            {SPORTS.map((sport) => (
-              <option key={sport} value={sport}>
-                {sportLabel(sport)}
+          <select
+            name="sport"
+            value={sport}
+            onChange={(event) => setSport(event.target.value as Sport)}
+            className="field"
+          >
+            {SPORTS.map((option) => (
+              <option key={option} value={option}>
+                {sportLabel(option)}
               </option>
             ))}
           </select>
           <p className="mt-1 text-xs text-muted">
-            NCAA pulls the twenty most interesting Saturday games with their AP
-            ranking, so you can choose from them.
+            {sport === "ncaaf"
+              ? "NCAA takes the twenty best Saturday games of the week: ranked teams first, then the closest lines."
+              : "NFL takes the full slate for the week."}
           </p>
         </div>
         <div>
@@ -284,26 +299,74 @@ function PullSection({ groupId, week }: { groupId: string; week: Week | null }) 
           />
         </div>
         <div>
-          <label className="label">Week (19-22 = playoffs)</label>
+          <label className="label">
+            {sport === "ncaaf" ? "Week (0 = week zero)" : "Week (19-22 = playoffs)"}
+          </label>
           <input
             name="weekNumber"
             type="number"
-            min={1}
-            max={22}
+            min={sport === "ncaaf" ? 0 : 1}
+            max={config.highestWeek}
             defaultValue={defaultWeek}
             required
             className="field"
           />
         </div>
+        <div className="col-span-2">
+          <label className="label">Where from</label>
+          <select name="source" defaultValue="feed" className="field">
+            <option value="feed">The odds feed (one request, exact names)</option>
+            <option value="claude">Claude web search (slower, use if the feed is empty)</option>
+          </select>
+        </div>
       </div>
-      <SubmitButton className="btn" pendingLabel="Searching, this takes a minute...">
-        Pull lines with Claude
+      <SubmitButton className="btn" pendingLabel="Pulling...">
+        Pull games
       </SubmitButton>
       <p className="text-xs text-muted">
-        These numbers come from a model reading a betting page, so check the
-        slate below before anyone picks. Once a game kicks off its line is final
-        and no pull can change it.
+        Check the slate below before anyone picks. Once a game kicks off its line
+        is final and no pull can change it.
       </p>
+    </form>
+  );
+}
+
+function TotalsPullSection({
+  groupId,
+  week,
+  games,
+}: {
+  groupId: string;
+  week: Week | null;
+  games: Game[];
+}) {
+  const [state, action] = useFormState(pullTotalsAction, IDLE);
+  const flagged = games.filter((game) => game.totals_enabled);
+  const awaiting = flagged.filter((game) => game.total_points === null);
+
+  if (!week) {
+    return <p className="text-sm text-muted">Pull a week&apos;s games first.</p>;
+  }
+
+  return (
+    <form action={action} className="space-y-3">
+      <input type="hidden" name="groupId" value={groupId} />
+      <input type="hidden" name="weekId" value={week.id} />
+      <input type="hidden" name="sport" value={week.sport} />
+      <Feedback state={state} />
+      <p className="text-sm text-muted">
+        Turn the over/under on for the games you want it on, under Games below,
+        then pull the numbers for all of them here. One request, however many
+        games you flagged.
+      </p>
+      <p className="text-sm">
+        {sportLabel(week.sport)} {week.label}: {flagged.length} game
+        {flagged.length === 1 ? "" : "s"} flagged
+        {awaiting.length > 0 ? `, ${awaiting.length} still without a number` : ""}.
+      </p>
+      <SubmitButton className="btn" pendingLabel="Pulling...">
+        Pull totals
+      </SubmitButton>
     </form>
   );
 }
@@ -339,6 +402,7 @@ function GamesSection({
   const [overrideState, override] = useFormState(overrideGameAction, IDLE);
   const [deleteState, remove] = useFormState(deleteGameAction, IDLE);
   const [totalState, setTotal] = useFormState(setTotalAction, IDLE);
+  const [toggleState, toggleTotal] = useFormState(toggleTotalAction, IDLE);
 
   const defaultYear = week?.season_year ?? new Date().getUTCFullYear();
   const defaultWeek = week?.week_number ?? 1;
@@ -362,11 +426,11 @@ function GamesSection({
               />
             </div>
             <div>
-              <label className="label">Week (19-22 = playoffs)</label>
+              <label className="label">Week (0 = college week zero, 19-22 = NFL playoffs)</label>
               <input
                 name="weekNumber"
                 type="number"
-                min={1}
+                min={0}
                 max={22}
                 defaultValue={defaultWeek}
                 required
@@ -412,6 +476,7 @@ function GamesSection({
         <Feedback state={overrideState} />
         <Feedback state={deleteState} />
         <Feedback state={totalState} />
+        <Feedback state={toggleState} />
         {games.length === 0 ? (
           <p className="text-sm text-muted">No games in this week yet.</p>
         ) : (
@@ -521,70 +586,54 @@ function GamesSection({
                   not caught up with. Leave it blank to keep the current time.
                 </p>
 
-                <form action={setTotal} className="mt-2 flex flex-wrap gap-2">
-                  <input type="hidden" name="groupId" value={groupId} />
-                  <input type="hidden" name="gameId" value={game.id} />
-                  <input type="hidden" name="remove" value="false" />
-                  <input
-                    name="total"
-                    type="number"
-                    step="0.5"
-                    min={0}
-                    max={150}
-                    defaultValue={game.total_points ?? ""}
-                    placeholder="over/under"
-                    aria-label="Over/under total"
-                    className="field w-32 py-1 text-sm"
-                  />
-                  <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
-                    {game.totals_enabled ? "Update O/U" : "Add O/U"}
-                  </SubmitButton>
-                  {game.totals_enabled && (
-                    <button
-                      type="submit"
-                      name="remove"
-                      value="true"
-                      className="btn py-1 text-sm text-muted"
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <form action={toggleTotal}>
+                    <input type="hidden" name="groupId" value={groupId} />
+                    <input type="hidden" name="gameId" value={game.id} />
+                    <input
+                      type="hidden"
+                      name="enabled"
+                      value={game.totals_enabled ? "false" : "true"}
+                    />
+                    <SubmitButton
+                      className={`btn py-1 text-sm ${
+                        game.totals_enabled ? "text-muted" : ""
+                      }`}
+                      pendingLabel="Saving..."
                     >
-                      Remove O/U
-                    </button>
-                  )}
-                </form>
+                      {game.totals_enabled ? "Over/under off" : "Over/under on"}
+                    </SubmitButton>
+                  </form>
 
-                <p className="mt-2 text-xs text-muted">
-                  The date box moves the kickoff, for a flexed game the feed has
-                  not caught up with. Leave it blank to keep the current time.
-                </p>
-
-                <form action={setTotal} className="mt-2 flex flex-wrap gap-2">
-                  <input type="hidden" name="groupId" value={groupId} />
-                  <input type="hidden" name="gameId" value={game.id} />
-                  <input type="hidden" name="remove" value="false" />
-                  <input
-                    name="total"
-                    type="number"
-                    step="0.5"
-                    min={0}
-                    max={150}
-                    defaultValue={game.total_points ?? ""}
-                    placeholder="over/under"
-                    aria-label="Over/under total"
-                    className="field w-32 py-1 text-sm"
-                  />
-                  <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
-                    {game.totals_enabled ? "Update O/U" : "Add O/U"}
-                  </SubmitButton>
                   {game.totals_enabled && (
-                    <button
-                      type="submit"
-                      name="remove"
-                      value="true"
-                      className="btn py-1 text-sm text-muted"
-                    >
-                      Remove O/U
-                    </button>
+                    <>
+                      <span className="text-xs text-muted">
+                        {game.total_points === null
+                          ? "waiting on a number, pull totals above"
+                          : `set at ${game.total_points}`}
+                      </span>
+                      <form action={setTotal} className="flex gap-2">
+                        <input type="hidden" name="groupId" value={groupId} />
+                        <input type="hidden" name="gameId" value={game.id} />
+                        <input
+                          name="total"
+                          type="number"
+                          step="0.5"
+                          min={0}
+                          max={150}
+                          defaultValue={game.total_points ?? ""}
+                          placeholder="by hand"
+                          aria-label="Over/under total"
+                          className="field w-24 py-1 text-sm"
+                        />
+                        <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
+                          Set
+                        </SubmitButton>
+                      </form>
+                    </>
                   )}
-                </form>
+                </div>
+
 
                 <form action={remove} className="mt-2 flex gap-2">
                   <input type="hidden" name="groupId" value={groupId} />

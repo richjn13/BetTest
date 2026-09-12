@@ -17,6 +17,12 @@ export type SportConfig = {
   saturdayOnly: boolean;
   /** Whether a poll ranking is worth showing beside a team. */
   ranked: boolean;
+  /**
+   * Whether the week's slate is chosen rather than complete. College plays
+   * more games a Saturday than anyone would pick, so its slate is a selection
+   * an admin pulled; the scheduled refresh must not add to it.
+   */
+  curatedSlate: boolean;
   highestWeek: number;
 };
 
@@ -28,6 +34,7 @@ const SPORT_CONFIG: Record<Sport, SportConfig> = {
     oddsApiKey: "americanfootball_nfl",
     saturdayOnly: false,
     ranked: false,
+    curatedSlate: false,
     highestWeek: 22,
   },
   ncaaf: {
@@ -37,6 +44,7 @@ const SPORT_CONFIG: Record<Sport, SportConfig> = {
     oddsApiKey: "americanfootball_ncaaf",
     saturdayOnly: true,
     ranked: true,
+    curatedSlate: true,
     highestWeek: 16,
   },
 };

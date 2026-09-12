@@ -1,13 +1,19 @@
 import "server-only";
 import { db, unwrap } from "./db";
 import { env } from "./env";
-import { weekForSport } from "./season-week";
+import { isSaturdayGame, weekForSport } from "./season-week";
 import {
   extractHomeSpread,
   extractScores,
+  extractTotal,
+  selectGames,
+  type Candidate,
   type OddsEvent,
   type ScoreEvent,
 } from "./odds-parse";
+import type { PullResult } from "./claude-odds-validate";
+import { fetchApTop25 } from "./claude-ranks";
+import { rankFor } from "./rankings";
 import {
   SPORTS_ENDPOINT,
   oddsApiUrl,
@@ -247,6 +253,13 @@ export async function refreshOdds(sport: Sport = "nfl"): Promise<SyncResult> {
       }
 
       if (!existing) {
+        // A curated slate is a selection somebody made. Adding to it from the
+        // feed would put fifty college games in front of members who were
+        // offered twenty.
+        if (sportConfig(sport).curatedSlate) {
+          result.gamesSkipped = (result.gamesSkipped ?? 0) + 1;
+          continue;
+        }
         const insert = await db()
           .from("games")
           .insert({
@@ -404,4 +417,157 @@ export async function refreshScores(
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+// ------------------------------------------------------- deliberate pulls
+
+/**
+ * A week's slate and spreads, read straight from the odds feed.
+ *
+ * This is the fix for college football. Asking a model to search out twenty
+ * games, their spreads, their kickoff times and their AP rankings cost a full
+ * web-searching run every time, and the names and times it came back with were
+ * approximate enough that validation threw the whole slate away. The feed
+ * carries all of it exactly, for one request, so there is nothing left to
+ * verify beyond which week a kickoff falls in. Only the poll still comes from
+ * a model, and only because the feed has no poll.
+ *
+ * One request against the monthly quota. The lines are returned, not written:
+ * the caller locks them through applyLockedLines exactly as it does a Claude
+ * pull, so both routes behave the same from there on.
+ */
+export async function pullLinesFromFeed(
+  seasonYear: number,
+  weekNumber: number,
+  sport: Sport,
+  limit: number | null = null,
+): Promise<PullResult> {
+  const empty: PullResult = { ok: false, error: null, games: [], rejected: [], source: null };
+  if (!process.env.ODDS_API_KEY) {
+    return { ...empty, error: "No ODDS_API_KEY is set, so the odds feed is off." };
+  }
+
+  const config = sportConfig(sport);
+  let events: OddsEvent[];
+  try {
+    events = await getJson<OddsEvent[]>(oddsEndpoint(config.oddsApiKey), {
+      regions: "us",
+      markets: "spreads",
+      oddsFormat: "american",
+      dateFormat: "iso",
+    });
+  } catch (error) {
+    return { ...empty, error: describe(error) };
+  }
+
+  const preferred = env.oddsApiBookmakers;
+  const rejected: string[] = [];
+  const candidates: Candidate[] = [];
+  const sources = new Set<string>();
+
+  for (const event of events) {
+    const kickoff = new Date(event.commence_time);
+    if (Number.isNaN(kickoff.getTime())) continue;
+
+    const placed = weekForSport(kickoff, sport, seasonYear);
+    if (placed.weekNumber !== weekNumber) continue;
+    if (config.saturdayOnly && !isSaturdayGame(kickoff)) continue;
+
+    const line = extractHomeSpread(event, preferred);
+    if (!line) {
+      // Normal this far out, and worth naming: an admin can add it by hand.
+      rejected.push(`${event.away_team} at ${event.home_team}: no spread posted yet`);
+      continue;
+    }
+
+    sources.add(line.source);
+    candidates.push({
+      awayTeam: event.away_team,
+      homeTeam: event.home_team,
+      kickoffIso: kickoff.toISOString(),
+      homeSpread: line.spread,
+      homeRank: null,
+      awayRank: null,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return {
+      ...empty,
+      rejected,
+      error:
+        `The feed has no ${config.label} games for ${seasonYear} week ${weekNumber} yet. ` +
+        "Books usually post a week's lines a few days out.",
+    };
+  }
+
+  // The poll only matters where it is shown, and it has to be applied before
+  // the slate is cut so the ranked games are the ones that survive the cut.
+  if (config.ranked) {
+    const poll = await fetchApTop25(seasonYear, weekNumber);
+    if (poll.length > 0) {
+      for (const game of candidates) {
+        game.homeRank = rankFor(game.homeTeam, poll);
+        game.awayRank = rankFor(game.awayTeam, poll);
+      }
+    }
+  }
+
+  const chosen = limit === null ? candidates : selectGames(candidates, limit);
+  return {
+    ok: true,
+    error: null,
+    games: chosen,
+    rejected,
+    source: sources.size === 1 ? [...sources][0] : "odds feed",
+  };
+}
+
+export type FeedTotal = {
+  awayTeam: string;
+  homeTeam: string;
+  total: number;
+  source: string;
+};
+
+/**
+ * Over/under numbers for a sport's current slate, one request.
+ *
+ * Kept apart from the spreads pull because the two are wanted at different
+ * moments: the slate is set once a week, while a total is only worth fetching
+ * for the games an admin has actually turned the over/under on for.
+ */
+export async function pullTotalsFromFeed(
+  sport: Sport,
+): Promise<{ ok: boolean; error: string | null; totals: FeedTotal[] }> {
+  if (!process.env.ODDS_API_KEY) {
+    return { ok: false, error: "No ODDS_API_KEY is set, so the odds feed is off.", totals: [] };
+  }
+
+  let events: OddsEvent[];
+  try {
+    events = await getJson<OddsEvent[]>(oddsEndpoint(sportConfig(sport).oddsApiKey), {
+      regions: "us",
+      markets: "totals",
+      oddsFormat: "american",
+      dateFormat: "iso",
+    });
+  } catch (error) {
+    return { ok: false, error: describe(error), totals: [] };
+  }
+
+  const preferred = env.oddsApiBookmakers;
+  const totals: FeedTotal[] = [];
+  for (const event of events) {
+    const found = extractTotal(event, preferred);
+    if (!found) continue;
+    totals.push({
+      awayTeam: event.away_team,
+      homeTeam: event.home_team,
+      total: found.total,
+      source: found.source,
+    });
+  }
+
+  return { ok: true, error: null, totals };
 }

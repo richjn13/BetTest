@@ -72,14 +72,26 @@ function seasonStartOverride(): number | null {
 // --------------------------------------------------------------- college
 
 /**
- * College football's week 1 Saturday. The season opens on the last weekend of
- * August or the first of September, so the first Saturday on or after the 23rd
- * is the anchor.
+ * College football's Week 1, expressed the same way the NFL's is: the Tuesday
+ * 08:00 UTC that opens it.
+ *
+ * The anchor is Labor Day. Week 1 is the weekend that ends on the first Monday
+ * of September, so its Saturday is the Saturday before that Monday: 30 August
+ * in 2025, 5 September in 2026. The earlier code anchored on the first
+ * Saturday from 23 August, which is Week 0, and so numbered the whole season
+ * one week light -- every game a pull returned was then rejected for landing
+ * in the wrong week.
+ *
+ * Week 0 exists in college football, so the number is allowed to reach 0
+ * rather than being clamped up to 1.
  */
 export function ncaafSeasonStartUtc(seasonYear: number): number {
-  const august = new Date(Date.UTC(seasonYear, 7, 23, BOUNDARY_HOUR_UTC));
-  const daysToSaturday = (6 - august.getUTCDay() + 7) % 7;
-  return august.getTime() + daysToSaturday * MS_PER_DAY;
+  const september = new Date(Date.UTC(seasonYear, 8, 1, BOUNDARY_HOUR_UTC));
+  const daysToMonday = (8 - september.getUTCDay()) % 7;
+  const firstMonday = september.getTime() + daysToMonday * MS_PER_DAY;
+  // Six days back from that Monday is the Tuesday before Week 1's Saturday, so
+  // a college week runs Tuesday to Monday exactly as an NFL week does.
+  return firstMonday - 6 * MS_PER_DAY;
 }
 
 /**
@@ -98,11 +110,14 @@ export function isSaturdayGame(kickoff: Date): boolean {
 /** The week a college kickoff belongs to, counting Saturdays from the opener. */
 export function ncaafWeekForKickoff(kickoff: Date, seasonYear?: number): SeasonWeek {
   const year = kickoff.getUTCFullYear();
+  // Week 0 sits a week before Week 1, so the season boundary has to sit a week
+  // earlier still; otherwise a late August opener is filed under last season.
   const season =
-    seasonYear ?? (kickoff.getTime() < ncaafSeasonStartUtc(year) ? year - 1 : year);
+    seasonYear ??
+    (kickoff.getTime() < ncaafSeasonStartUtc(year) - MS_PER_WEEK ? year - 1 : year);
   const elapsed = kickoff.getTime() - ncaafSeasonStartUtc(season);
   const raw = Math.floor(elapsed / MS_PER_WEEK) + 1;
-  return { seasonYear: season, weekNumber: Math.min(16, Math.max(1, raw)) };
+  return { seasonYear: season, weekNumber: Math.min(16, Math.max(0, raw)) };
 }
 
 /** Week derivation for either sport. */

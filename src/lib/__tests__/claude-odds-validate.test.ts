@@ -31,6 +31,8 @@ describe("validate", () => {
         homeTeam: "Kansas City Chiefs",
         kickoffIso: kickoff(),
         homeSpread: -2.5,
+        homeRank: null,
+        awayRank: null,
       },
     ]);
   });

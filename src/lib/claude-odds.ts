@@ -114,7 +114,8 @@ function prompt(seasonYear: number, weekNumber: number, sport: Sport): string {
     "- Prefer one consistent sportsbook for every game so the numbers agree with",
     "  each other, and name it in the source field.",
     "- Omit a game entirely rather than guessing at a spread you could not find.",
-    "- Do not include games from a different week.",
+    "- Go by the date above, not by a site's week number: report the games of",
+    "  the weekend nearest that date.",
     ...(sport === "ncaaf"
       ? [
           "",
@@ -123,6 +124,8 @@ function prompt(seasonYear: number, weekNumber: number, sport: Sport): string {
           "  Friday or Sunday games.",
           "- Report the TWENTY MOST INTERESTING games, not the whole slate:",
           "  ranked teams, conference matchups, and close lines.",
+          "- College numbers a Week 0 in late August, so a site's week number may",
+          "  be one off from the one above. The date is what decides.",
           "- Give each team's position in that week's AP Top 25 as home_rank and",
           "  away_rank, or null if the team is unranked.",
           "- Use the school name as the AP poll writes it, e.g. Ohio State,",

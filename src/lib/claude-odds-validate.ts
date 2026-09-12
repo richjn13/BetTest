@@ -105,8 +105,15 @@ export function validate(
     // Ask the same function that assigns every other game its week. A fixed
     // day window around the week's nominal start would reject the Super Bowl,
     // which sits two weeks out because of the bye before it.
+    //
+    // College gets a week of slack in either direction. Its Week 0 means sites
+    // disagree with each other about which number a given Saturday carries,
+    // and demanding an exact match once threw away every game of every pull.
+    // The games are written to the week the admin asked for either way, so the
+    // slack only decides what is accepted, never where it lands.
     const placed = weekForSport(kickoff, sport, seasonYear);
-    if (placed.weekNumber !== weekNumber) {
+    const drift = Math.abs(placed.weekNumber - weekNumber);
+    if (drift > (config.saturdayOnly ? 1 : 0)) {
       result.rejected.push(
         `${label}: kickoff ${kickoff.toISOString().slice(0, 10)} lands in week ` +
           `${placed.weekNumber}, not week ${weekNumber}`,

@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { db, unwrap } from "@/lib/db";
 import { gradeResolvedGames } from "@/lib/grading";
 import { pullLinesWithClaude } from "@/lib/claude-odds";
+import { pullLinesFromFeed, pullTotalsFromFeed } from "@/lib/odds";
 import { runRefresh, summarize } from "@/lib/refresh";
 import {
   AppError,
@@ -20,10 +21,12 @@ import {
   regenerateJoinCode,
   removeUser,
   setAdmin,
+  applyTotals,
   setGameTotal,
+  setTotalsEnabled,
   setWeekClosed,
 } from "@/lib/queries";
-import { isSport, sportLabel, type Sport } from "@/lib/sports";
+import { isSport, sportConfig, sportLabel, type Sport } from "@/lib/sports";
 import type { GameStatus, Side } from "@/lib/types";
 
 import type { AdminState } from "./state";
@@ -429,34 +432,58 @@ export async function adjustPointsAction(
   });
 }
 
-// ------------------------------------------------------------------- claude
+// ------------------------------------------------------------------- pulls
+
+/** How many college games a pull offers. The full Saturday slate is unpickable. */
+const NCAAF_SLATE_SIZE = 20;
+
+function readSport(form: FormData): Sport {
+  const value = text(form, "sport");
+  return isSport(value) ? value : "nfl";
+}
 
 /**
- * Asks Claude to search for the week's lines, then writes what survives
- * validation. Every number is locked at the moment of the pull: the odds feed
- * will not touch it, and only another deliberate pull can replace it.
+ * Fills in the week's games and spreads, and locks every number it writes:
+ * the odds feed will not touch a locked line, and only another deliberate pull
+ * can replace it.
+ *
+ * Two sources. The odds feed is the default and the one to use -- exact team
+ * names, exact kickoff times, one request. Claude's web search is kept as a
+ * fallback for a week the feed has not posted, and it is the slower and less
+ * reliable of the two, so nothing chooses it automatically.
  */
-export async function pullLinesAction(
+export async function pullGamesAction(
   _previous: AdminState,
   form: FormData,
 ): Promise<AdminState> {
   const groupId = text(form, "groupId");
   const seasonYear = optionalNumber(form, "seasonYear");
   const weekNumber = optionalNumber(form, "weekNumber");
-  const sportInput = text(form, "sport");
-  const sport: Sport = isSport(sportInput) ? sportInput : "nfl";
+  const sport = readSport(form);
+  const useClaude = text(form, "source") === "claude";
+  const config = sportConfig(sport);
 
   return run(groupId, async (actor) => {
-    if (!seasonYear || !weekNumber) throw new AppError("Pick a season and week.");
-    if (weekNumber < 1 || weekNumber > 22) throw new AppError("Week must be between 1 and 22.");
-
-    const pulled = await pullLinesWithClaude(seasonYear, weekNumber, sport);
-    if (!pulled.ok) {
-      throw new AppError(pulled.error ?? "The pull came back empty.");
+    if (!seasonYear || weekNumber === null) throw new AppError("Pick a season and week.");
+    const lowest = sport === "ncaaf" ? 0 : 1;
+    if (weekNumber < lowest || weekNumber > config.highestWeek) {
+      throw new AppError(
+        `${config.label} weeks run ${lowest} to ${config.highestWeek}.`,
+      );
     }
 
+    const limit = sport === "ncaaf" ? NCAAF_SLATE_SIZE : null;
+    const pulled = useClaude
+      ? await pullLinesWithClaude(seasonYear, weekNumber, sport)
+      : await pullLinesFromFeed(seasonYear, weekNumber, sport, limit);
+    if (!pulled.ok) throw new AppError(pulled.error ?? "The pull came back empty.");
+
     const week = await ensureWeek(seasonYear, weekNumber, sport);
-    const source = pulled.source ? `claude:${pulled.source}` : "claude";
+    const source = pulled.source
+      ? `${useClaude ? "claude" : "odds"}:${pulled.source}`
+      : useClaude
+        ? "claude"
+        : "odds";
     const counts = await applyLockedLines(week.id, pulled.games, source);
 
     await logAdminAction({
@@ -467,6 +494,7 @@ export async function pullLinesAction(
       note: `Lines pulled and locked for ${sportLabel(sport)} ${week.label}.`,
       details: {
         sport,
+        via: useClaude ? "claude" : "odds feed",
         source: pulled.source,
         accepted: pulled.games.length,
         rejected: pulled.rejected,
@@ -480,11 +508,6 @@ export async function pullLinesAction(
       pulled.source ? `from ${pulled.source}` : null,
     ].filter(Boolean);
 
-    const rejected =
-      pulled.rejected.length > 0
-        ? ` Dropped ${pulled.rejected.length}: ${pulled.rejected.join("; ")}.`
-        : "";
-
     const moved =
       counts.movedKickoff.length > 0
         ? ` Kickoff moved: ${counts.movedKickoff.join("; ")}.`
@@ -497,39 +520,122 @@ export async function pullLinesAction(
           `${counts.missing.join("; ")}. Delete them below if they are gone.`
         : "";
 
+    const rejected =
+      pulled.rejected.length > 0
+        ? ` Left out ${pulled.rejected.length}: ${pulled.rejected.join("; ")}.`
+        : "";
+
     return `${parts.join(", ")}. Check the slate below before anyone picks.${moved}${missing}${rejected}`;
   });
 }
 
-/** Turns the over/under on for a game, or off. */
+/**
+ * Fetches over/under numbers for the games flagged for one, and writes them.
+ *
+ * One request per pull, and only the flagged games are touched, so turning the
+ * over/under on for three games costs exactly what turning it on for twenty
+ * does.
+ */
+export async function pullTotalsAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const weekId = text(form, "weekId");
+  const sport = readSport(form);
+
+  return run(groupId, async (actor) => {
+    if (!weekId) throw new AppError("Pick a week.");
+    const week = await getWeek(weekId);
+    if (!week) throw new AppError("That week no longer exists.");
+
+    const pulled = await pullTotalsFromFeed(sport);
+    if (!pulled.ok) throw new AppError(pulled.error ?? "The totals pull came back empty.");
+
+    const counts = await applyTotals(weekId, pulled.totals);
+
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: "pull_totals",
+      note: `Over/unders pulled for ${sportLabel(sport)} ${week.label}.`,
+      details: { sport, week: week.label, ...counts },
+    });
+
+    if (counts.filled === 0 && counts.unchanged === 0 && counts.waiting.length === 0) {
+      return "No game in this week has its over/under turned on yet. Toggle one on under Games, then pull.";
+    }
+
+    const waiting =
+      counts.waiting.length > 0
+        ? ` Still waiting on a number: ${counts.waiting.join("; ")}. ` +
+          "Books post totals closer to kickoff, or you can type one in."
+        : "";
+
+    return (
+      `${counts.filled} over/under${counts.filled === 1 ? "" : "s"} written` +
+      `${counts.unchanged > 0 ? `, ${counts.unchanged} already current` : ""}.${waiting}`
+    );
+  });
+}
+
+/** Turns the over/under on for a game, or off, without setting a number. */
+export async function toggleTotalAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const gameId = text(form, "gameId");
+  const enabled = text(form, "enabled") === "true";
+
+  return run(groupId, async (actor) => {
+    const game = await getGame(gameId);
+    if (!game) throw new AppError("That game no longer exists.");
+
+    await setTotalsEnabled(gameId, enabled);
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: enabled ? "enable_total" : "disable_total",
+      gameId,
+      note: enabled ? "Over/under turned on, awaiting a number." : "Over/under removed.",
+      details: { matchup: `${game.away_team} at ${game.home_team}` },
+    });
+
+    return enabled
+      ? "Over/under on. Pull totals to fill in the number."
+      : "Over/under removed from that game.";
+  });
+}
+
+/** Sets an over/under by hand, for a game the feed has no number for. */
 export async function setTotalAction(
   _previous: AdminState,
   form: FormData,
 ): Promise<AdminState> {
   const groupId = text(form, "groupId");
   const gameId = text(form, "gameId");
-  const remove = text(form, "remove") === "true";
   const total = optionalNumber(form, "total");
 
   return run(groupId, async (actor) => {
     const game = await getGame(gameId);
     if (!game) throw new AppError("That game no longer exists.");
-    if (!remove && total === null) throw new AppError("Enter the over/under number.");
+    if (total === null) throw new AppError("Enter the over/under number.");
 
-    await setGameTotal(gameId, remove ? null : total);
+    await setGameTotal(gameId, total);
     await logAdminAction({
       groupId,
       actorUserId: actor.id,
       actorUsername: actor.username,
-      action: remove ? "disable_total" : "enable_total",
+      action: "enable_total",
       gameId,
-      note: remove ? "Over/under removed." : `Over/under set to ${total}.`,
-      details: { matchup: `${game.away_team} at ${game.home_team}`, total: remove ? null : total },
+      note: `Over/under set to ${total} by hand.`,
+      details: { matchup: `${game.away_team} at ${game.home_team}`, total },
     });
 
-    return remove
-      ? "Over/under removed from that game."
-      : `Over/under set to ${total}. Members can now pick it.`;
+    return `Over/under set to ${total}. Members can now pick it.`;
   });
 }
 

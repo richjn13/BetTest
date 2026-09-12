@@ -211,10 +211,11 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are six files to run, in order**, all in `supabase/migrations/`:
+**There are eight files to run, in order**, all in `supabase/migrations/`:
 `0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`,
-`0004_week_snapshots.sql`, `0005_profiles.sql`, then
-`0006_schedule_changes.sql`. Do the first one now and come back for the others.
+`0004_week_snapshots.sql`, `0005_profiles.sql`, `0006_schedule_changes.sql`,
+`0007_sports_and_totals.sql`, then `0008_totals_await_number.sql`. Do the first
+one now and come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -243,8 +244,10 @@ Now repeat the same copy-and-run for the rest: `0002_locked_lines.sql` adds a
 column used by the line pull, `0003_one_game_per_matchup.sql` stops the same
 game being created twice in a week, `0004_week_snapshots.sql` adds the two
 timestamps that make each week its own snapshot, `0005_profiles.sql` adds the
-name, email and avatar fields, and `0006_schedule_changes.sql` adds the two
-stamps that let the app notice a moved or vanished game.
+name, email and avatar fields, `0006_schedule_changes.sql` adds the two stamps
+that let the app notice a moved or vanished game, `0007_sports_and_totals.sql`
+adds college football and the over/under, and `0008_totals_await_number.sql`
+lets you turn an over/under on before its number has been pulled.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
@@ -433,11 +436,50 @@ If it reports a problem instead, the message names the cause. Nothing is damaged
 either way: a failed fetch changes no stored data, so whatever spreads you
 already had stay exactly as they were.
 
-### Pulling lines with Claude
+### Pulling a week's games
 
-**Admin → Lines → Pull lines with Claude** is the on-demand path. Pick a season
-and week, press the button, and Claude searches for that week's spreads and
-writes them in. It takes a minute or so, and needs `ANTHROPIC_API_KEY` set.
+**Admin → Pull games** is the on-demand path. Choose the competition, the season
+and the week, then press **Pull games**.
+
+**Where the numbers come from** is a choice on that form, and the odds feed is
+the default. The feed answers with exact team names, exact kickoff times and a
+current spread for one request against your monthly quota, and nothing in it can
+be misremembered. Claude web search is the other option, kept for a week the
+feed has not posted yet; it is slower, it costs Anthropic tokens rather than
+quota, and its numbers are a model's reading of a betting page. Use the feed
+unless it comes back empty.
+
+**NFL pulls the whole slate. NCAA pulls twenty games.** College plays fifty or
+more games a Saturday, which is nobody's idea of a pick sheet, so the pull keeps
+the twenty worth picking: ranked teams first, best ranking first, then the games
+with the closest lines. The AP Top 25 is fetched separately and shown beside the
+teams. If the poll cannot be fetched the games still arrive, just without
+rankings, and the ranking has no effect on scoring.
+
+**College week numbers.** College football plays a Week 0 in late August, so the
+app numbers its weeks the way the sport does: Week 1 is the weekend that ends on
+Labor Day, and the late August openers are Week 0. Pull Week 0 by typing 0.
+
+**The scheduled refresh will not add college games.** A curated slate is a
+selection you made; the feed refreshing behind it would put the other forty
+games in front of everyone. It still updates kickoff times and scores on the
+games you did pull.
+
+### Over/unders
+
+Over/unders are off by default and never appear until you turn one on.
+
+1. Under **Admin → Games**, press **Over/under on** for each game that should
+   have one. The game is flagged; it has no number yet, and members see nothing.
+2. Under **Admin → Pull totals**, press **Pull totals**. That fetches the
+   current numbers and writes them onto every flagged game in the week. One
+   request, however many games you flagged.
+3. The over/under row appears for members only once the number lands.
+
+If a book has not posted a total for one of your games, the result says which,
+and you can type a number into that game by hand. **Over/under off** takes the
+market off a game and drops its number with it. Like a spread, a total freezes
+at kickoff.
 
 **The pull locks each line.** A locked line is left alone by the odds feed, so
 nothing overwrites it behind your back. Pull the same week again whenever you
@@ -454,15 +496,16 @@ Freezing still wins. Once a game kicks off, its line is the number picks are
 graded against, and no pull can move it. Re-pulling a week that has already
 started updates only the games still to come, and says how many it left alone.
 
-**Check the slate after a pull.** These numbers come from a model reading a
-betting page, not from a typed field in a sportsbook's API, and the honest
-failure mode is a misread half point that then freezes and mis-scores everyone.
-The app rejects what it can catch: a name that is not an NFL team, a spread that
-is not a half point, one large enough to be a moneyline misread as a spread, a
-kickoff in the wrong week, a duplicated matchup. Anything dropped is named in
-the result, and the pull is written to the audit log with its source. What it
+**Check the slate after a Claude pull.** Those numbers come from a model reading
+a betting page rather than from a sportsbook's own field, and the honest failure
+mode is a misread half point that then freezes and mis-scores everyone. The app
+rejects what it can catch: a name that is not an NFL team, a spread that is not
+a half point, one large enough to be a moneyline misread as a spread, a kickoff
+in the wrong weekend, a duplicated matchup. Anything dropped is named in the
+result, and every pull is written to the audit log with its source. What it
 cannot catch is a plausible number that happens to be wrong, which is why the
-slate list underneath is worth a glance before anyone picks.
+slate list underneath is worth a glance before anyone picks. A feed pull needs
+none of this: the sportsbook's own numbers arrive as they were posted.
 
 **The model.** Pulls use Claude Sonnet 5 by default, which is quicker and
 several times cheaper than Opus for what this does: reading numbers off a page
@@ -537,7 +580,7 @@ against, whichever book supplied it.
 The two halves of the feed are on different footings, deliberately.
 
 **Lines are pulled manually**, once a week, whenever you choose, from
-**Admin → Lines**. Nothing polls for spreads, so a line cannot move under a
+**Admin → Pull games**. Nothing polls for spreads, so a line cannot move under a
 week you have already opened.
 
 **Scores are polled**, because The Odds API has no webhooks — there is no way
@@ -771,7 +814,7 @@ the rows below are things it will find for you.
 | A pulled game never gets a score | It was never linked to the odds feed. Set `ODDS_API_KEY` and press refresh, which adopts it, or enter the final by hand under Admin → Games. |
 | `/setup` says The Odds API returned 404 | Fixed. The setup probe was asking for a path that does not exist; your actual refresh was unaffected. Pull the latest and redeploy. |
 | Odds refresh fails right after you add the key | Check you pasted the Odds API key and not the Anthropic one. `/setup` names this directly. The Odds API key has no `sk-` prefix. |
-| Pull lines with Claude says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
+| A Claude pull says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
 | A page 500s instantly, with no outgoing requests in the Vercel log | The page's module failed to load, so nothing ran. Read the Vercel log for the reason. One cause is a `"use server"` file exporting anything other than an async function, which `npm test` now checks for. |
 | The Vercel deploy fails naming `maxDuration` | You are on Hobby, which caps a function at 60 seconds. Change both `maxDuration` exports from 300 to 60, or upgrade to Pro. |
 | A button shows an error, but the work actually happened | A timeout, not a failure. The job finished server-side after the response gave up. Reload and check before pressing again. Vercel's default is 10 seconds on Hobby; the admin page now asks for 60, its ceiling. A search-backed Claude pull can still exceed that, in which case pull one week at a time or move to Pro. |

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { extractHomeSpread, extractScores, type OddsEvent } from "../odds-parse";
+import {
+  extractHomeSpread,
+  extractScores,
+  extractTotal,
+  selectGames,
+  type OddsEvent,
+} from "../odds-parse";
 
 const event = (bookmakers: OddsEvent["bookmakers"]): OddsEvent => ({
   id: "evt",
@@ -87,5 +93,83 @@ describe("extractScores", () => {
     expect(
       extractScores({ ...base, scores: [{ name: "Kansas City Chiefs", score: "24" }] }),
     ).toBeNull();
+  });
+});
+
+describe("extractTotal", () => {
+  const event = (books: unknown) =>
+    ({
+      id: "1",
+      commence_time: "2026-09-13T17:00:00Z",
+      home_team: "Kansas City Chiefs",
+      away_team: "Buffalo Bills",
+      bookmakers: books,
+    }) as never;
+
+  const totalsBook = (key: string, point: number) => ({
+    key,
+    markets: [
+      {
+        key: "totals",
+        outcomes: [
+          { name: "Over", point },
+          { name: "Under", point },
+        ],
+      },
+    ],
+  });
+
+  it("reads the number off either outcome", () => {
+    expect(extractTotal(event([totalsBook("draftkings", 47.5)]), [])).toEqual({
+      total: 47.5,
+      source: "draftkings",
+    });
+  });
+
+  it("prefers the named bookmaker", () => {
+    const found = extractTotal(
+      event([totalsBook("fanduel", 44), totalsBook("draftkings", 47.5)]),
+      ["draftkings"],
+    );
+    expect(found).toEqual({ total: 47.5, source: "draftkings" });
+  });
+
+  it("returns null when no book has posted a total", () => {
+    expect(extractTotal(event([{ key: "draftkings", markets: [] }]), [])).toBe(null);
+    expect(extractTotal(event(undefined), [])).toBe(null);
+  });
+});
+
+describe("selectGames", () => {
+  const game = (name: string, spread: number, homeRank: number | null = null) => ({
+    awayTeam: `${name} away`,
+    homeTeam: `${name} home`,
+    kickoffIso: "2026-09-12T17:00:00Z",
+    homeSpread: spread,
+    homeRank,
+    awayRank: null,
+  });
+
+  it("puts the best ranked game first", () => {
+    const chosen = selectGames([game("a", 1), game("b", 20, 3), game("c", 14, 1)], 3);
+    expect(chosen.map((entry) => entry.homeTeam)).toEqual([
+      "c home",
+      "b home",
+      "a home",
+    ]);
+  });
+
+  it("orders unranked games by how close the line is", () => {
+    const chosen = selectGames([game("a", -17), game("b", 2.5), game("c", -7)], 3);
+    expect(chosen.map((entry) => entry.homeTeam)).toEqual([
+      "b home",
+      "c home",
+      "a home",
+    ]);
+  });
+
+  it("cuts the slate to the limit", () => {
+    const many = Array.from({ length: 60 }, (_, index) => game(String(index), index));
+    expect(selectGames(many, 20)).toHaveLength(20);
   });
 });

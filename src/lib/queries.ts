@@ -593,17 +593,17 @@ export async function applyLockedLines(
   return counts;
 }
 
-/** Turns the over/under on or off for a game, and sets its number. */
+/**
+ * Sets the over/under number for a game, and turns the market on.
+ *
+ * Passing null takes the market off the game entirely and drops the number
+ * with it.
+ */
 export async function setGameTotal(
   gameId: string,
   total: number | null,
 ): Promise<void> {
-  const game = await getGame(gameId);
-  if (!game) throw new AppError("That game no longer exists.");
-  await assertWeekOpen(game.week_id);
-  if (game.spread_frozen_at) {
-    throw new AppError("This game has already kicked off, so its total is fixed.");
-  }
+  const game = await editableGame(gameId);
   if (total !== null && (!Number.isFinite(total) || total <= 0 || total > 150)) {
     throw new AppError("Enter a total between 0 and 150.");
   }
@@ -611,14 +611,89 @@ export async function setGameTotal(
   unwrap(
     await db()
       .from("games")
-      .update({
-        total_points: total,
-        totals_enabled: total !== null,
-      })
-      .eq("id", gameId)
+      .update({ total_points: total, totals_enabled: total !== null })
+      .eq("id", game.id)
       .is("spread_frozen_at", null)
       .select("id"),
   );
+}
+
+/**
+ * Flags a game as one that should carry an over/under, without a number.
+ *
+ * This is what the toggle does. The number arrives later, from a totals pull,
+ * which is the whole point: an admin marks the games worth an over/under and
+ * then fetches every number in one request.
+ */
+export async function setTotalsEnabled(gameId: string, enabled: boolean): Promise<void> {
+  const game = await editableGame(gameId);
+  unwrap(
+    await db()
+      .from("games")
+      .update(
+        enabled
+          ? { totals_enabled: true }
+          : { totals_enabled: false, total_points: null },
+      )
+      .eq("id", game.id)
+      .is("spread_frozen_at", null)
+      .select("id"),
+  );
+}
+
+/**
+ * Writes pulled over/under numbers onto the games flagged for them.
+ *
+ * Only flagged games are touched: the feed carries a total for nearly every
+ * game, and turning the market on for a game nobody asked for would put a
+ * second pick in front of members without anyone deciding to.
+ */
+export async function applyTotals(
+  weekId: string,
+  totals: { awayTeam: string; homeTeam: string; total: number }[],
+): Promise<{ filled: number; unchanged: number; waiting: string[] }> {
+  await assertWeekOpen(weekId);
+
+  const byMatchup = new Map(
+    totals.map((entry) => [`${entry.awayTeam}@${entry.homeTeam}`, entry.total]),
+  );
+  const counts = { filled: 0, unchanged: 0, waiting: [] as string[] };
+
+  for (const game of await getGamesForWeek(weekId)) {
+    if (!game.totals_enabled) continue;
+    if (game.spread_frozen_at) continue;
+
+    const found = byMatchup.get(`${game.away_team}@${game.home_team}`);
+    if (found === undefined) {
+      counts.waiting.push(`${game.away_team} at ${game.home_team}`);
+      continue;
+    }
+    if (game.total_points !== null && Number(game.total_points) === found) {
+      counts.unchanged += 1;
+      continue;
+    }
+
+    const update = await db()
+      .from("games")
+      .update({ total_points: found })
+      .eq("id", game.id)
+      .is("spread_frozen_at", null)
+      .select("id");
+    if (!update.error) counts.filled += 1;
+  }
+
+  return counts;
+}
+
+/** Shared checks: the game exists, its week is open, and it has not kicked off. */
+async function editableGame(gameId: string) {
+  const game = await getGame(gameId);
+  if (!game) throw new AppError("That game no longer exists.");
+  await assertWeekOpen(game.week_id);
+  if (game.spread_frozen_at) {
+    throw new AppError("This game has already kicked off, so its total is fixed.");
+  }
+  return game;
 }
 
 /** Saves or changes an over/under pick. */
@@ -631,6 +706,9 @@ export async function saveTotalPick(
   if (!game) throw new AppError("That game no longer exists.");
   await assertWeekOpen(game.week_id);
   if (!game.totals_enabled) throw new AppError("This game has no over/under.");
+  if (game.total_points === null) {
+    throw new AppError("This game's over/under has not been pulled yet.");
+  }
   if (!isGameOpen(game)) throw new AppError("That game has already started.");
 
   const result = await db()

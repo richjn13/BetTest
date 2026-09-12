@@ -64,25 +64,38 @@ describe("weekForKickoff", () => {
 });
 
 describe("college football weeks", () => {
-  it("anchors week 1 on the first Saturday from 23 August", () => {
-    // 2026: 23 August is a Sunday, so week 1 is Saturday the 29th.
-    expect(new Date(ncaafSeasonStartUtc(2026)).toISOString().slice(0, 10)).toBe("2026-08-29");
-    // 2025: 23 August is itself a Saturday.
-    expect(new Date(ncaafSeasonStartUtc(2025)).toISOString().slice(0, 10)).toBe("2025-08-23");
+  it("anchors week 1 on the weekend that ends on Labor Day", () => {
+    // Week 1's Saturday is the Saturday before the first Monday of September,
+    // and the week opens on the Tuesday before it, as an NFL week does.
+    // 2026: Labor Day is 7 September, so week 1 is Saturday the 5th.
+    expect(new Date(ncaafSeasonStartUtc(2026)).toISOString().slice(0, 10)).toBe("2026-09-01");
+    // 2025: Labor Day is 1 September, so week 1 is Saturday 30 August.
+    expect(new Date(ncaafSeasonStartUtc(2025)).toISOString().slice(0, 10)).toBe("2025-08-26");
   });
 
   it("counts Saturdays from the opener", () => {
-    expect(ncaafWeekForKickoff(at("2026-08-29T18:00:00Z"))).toEqual({
+    expect(ncaafWeekForKickoff(at("2026-09-05T18:00:00Z"))).toEqual({
       seasonYear: 2026,
       weekNumber: 1,
     });
-    expect(ncaafWeekForKickoff(at("2026-09-05T18:00:00Z")).weekNumber).toBe(2);
-    expect(ncaafWeekForKickoff(at("2026-09-12T18:00:00Z")).weekNumber).toBe(3);
+    expect(ncaafWeekForKickoff(at("2026-09-12T18:00:00Z")).weekNumber).toBe(2);
+    expect(ncaafWeekForKickoff(at("2026-09-19T18:00:00Z")).weekNumber).toBe(3);
+  });
+
+  it("numbers the late August openers week 0, as college itself does", () => {
+    expect(ncaafWeekForKickoff(at("2026-08-29T18:00:00Z"))).toEqual({
+      seasonYear: 2026,
+      weekNumber: 0,
+    });
+    expect(ncaafWeekForKickoff(at("2025-08-23T18:00:00Z"))).toEqual({
+      seasonYear: 2025,
+      weekNumber: 0,
+    });
   });
 
   it("keeps a late kickoff with its own Saturday", () => {
     // A west coast game starting 8pm Pacific is Sunday 03:00 UTC.
-    expect(ncaafWeekForKickoff(at("2026-09-06T03:00:00Z")).weekNumber).toBe(2);
+    expect(ncaafWeekForKickoff(at("2026-09-13T03:00:00Z")).weekNumber).toBe(2);
   });
 
   it("puts January games in the season that started the previous August", () => {
@@ -113,10 +126,10 @@ describe("isSaturdayGame", () => {
 
 describe("weekForSport", () => {
   it("routes each sport to its own calendar", () => {
-    // The same Saturday is a different week number in each sport, because
-    // college opens a fortnight before the NFL does.
+    // The same Saturday is a different week number in each sport: college's
+    // week 1 ends on Labor Day, the NFL's starts two days after it.
     const saturday = at("2026-09-19T18:00:00Z");
-    expect(weekForSport(saturday, "ncaaf").weekNumber).toBe(4);
+    expect(weekForSport(saturday, "ncaaf").weekNumber).toBe(3);
     expect(weekForSport(saturday, "nfl").weekNumber).toBe(2);
   });
 });
