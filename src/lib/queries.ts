@@ -6,6 +6,7 @@ import { weekLabel } from "./format";
 import { buildStandings, type Adjustment, type ScoredPick, type Standing } from "./scoring";
 import { SPORTS, type Sport } from "./sports";
 import type { ProposedGame } from "./claude-odds-validate";
+import type { PollEntry } from "./rankings";
 import {
   isGameOpen,
   type TotalSide,
@@ -427,6 +428,56 @@ export async function getCurrentWeek(sport?: Sport): Promise<Week | null> {
   if (next) return candidates.find((week) => week.id === next.week_id) ?? null;
 
   return candidates.at(-1) ?? null;
+}
+
+// ------------------------------------------------------------------- poll
+
+/**
+ * The stored AP Top 25 for a week, or an empty list.
+ *
+ * Rankings are the one thing the odds feed does not carry. Fetching them was
+ * costing a model call on every college pull, which is what made an NCAA pull
+ * slow and expensive next to an instant, free NFL one. Written once a week and
+ * read for nothing thereafter.
+ */
+export async function getStoredPoll(
+  seasonYear: number,
+  weekNumber: number,
+): Promise<{ entries: PollEntry[]; source: string; updatedAt: string } | null> {
+  const row = unwrap<{ entries: PollEntry[]; source: string; updated_at: string } | null>(
+    await db()
+      .from("ap_poll")
+      .select("entries, source, updated_at")
+      .eq("season_year", seasonYear)
+      .eq("week_number", weekNumber)
+      .maybeSingle(),
+  );
+  if (!row || !Array.isArray(row.entries) || row.entries.length === 0) return null;
+  return { entries: row.entries, source: row.source, updatedAt: row.updated_at };
+}
+
+export async function savePoll(
+  seasonYear: number,
+  weekNumber: number,
+  entries: PollEntry[],
+  source: string,
+): Promise<void> {
+  if (entries.length === 0) throw new AppError("That poll had no ranked teams in it.");
+  unwrap(
+    await db()
+      .from("ap_poll")
+      .upsert(
+        {
+          season_year: seasonYear,
+          week_number: weekNumber,
+          entries,
+          source,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "season_year,week_number" },
+      )
+      .select("season_year"),
+  );
 }
 
 // ------------------------------------------------------------------- games

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSchool, rankFor, readPoll } from "../rankings";
+import { normalizeSchool, parsePastedPoll, rankFor, readPoll } from "../rankings";
 
 const poll = [
   { rank: 1, team: "Ohio State" },
@@ -53,5 +53,37 @@ describe("rankFor", () => {
     // "Texas" must not rank Texas State, and "Miami" must not rank Miami (OH).
     expect(rankFor("Texas State Bobcats", poll)).toBe(null);
     expect(rankFor("Texas Longhorns", poll)).toBe(4);
+  });
+});
+
+describe("parsePastedPoll", () => {
+  it("reads the shapes a poll gets pasted in", () => {
+    const entries = parsePastedPoll(`
+      1. Ohio State (12-0)
+      2) Texas A&M 1,455
+      3 Georgia
+      4. Miami (FL) 11-1
+    `);
+    expect(entries).toEqual([
+      { rank: 1, team: "Ohio State" },
+      { rank: 2, team: "Texas A&M" },
+      { rank: 3, team: "Georgia" },
+      { rank: 4, team: "Miami" },
+    ]);
+  });
+
+  it("ignores headings, blank lines and anything past 25", () => {
+    const entries = parsePastedPoll("AP Top 25\n\n1. Alabama\n26. Not ranked\n0. Nope");
+    expect(entries).toEqual([{ rank: 1, team: "Alabama" }]);
+  });
+
+  it("keeps the first of a repeated rank", () => {
+    expect(parsePastedPoll("1. Oregon\n1. Someone else")).toEqual([
+      { rank: 1, team: "Oregon" },
+    ]);
+  });
+
+  it("returns nothing for text that is not a poll", () => {
+    expect(parsePastedPoll("no numbers here at all")).toEqual([]);
   });
 });

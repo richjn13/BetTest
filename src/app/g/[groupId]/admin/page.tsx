@@ -9,6 +9,7 @@ import {
   getWeek,
   listWeeks,
 } from "@/lib/queries";
+import { getStoredPoll } from "@/lib/queries";
 import { probeOddsFeed } from "@/lib/odds";
 import { AdminPanel } from "./AdminPanel";
 
@@ -56,6 +57,13 @@ export default async function AdminPage({
     : ((await getCurrentWeek()) ?? mostRecentOpened);
 
   const games = week ? await getGamesForWeek(week.id) : [];
+
+  // Whether a college week already has its rankings decides what the pull box
+  // says, and reading it is one cheap query.
+  const collegeWeek = weeks.filter((candidate) => candidate.sport === "ncaaf").at(-1) ?? null;
+  const poll = collegeWeek
+    ? await getStoredPoll(collegeWeek.season_year, collegeWeek.week_number).catch(() => null)
+    : null;
   const picks = week
     ? await getPicksForWeek(
         week.id,
@@ -75,6 +83,16 @@ export default async function AdminPage({
       actions={actions}
       adjustments={adjustments}
       quota={probe?.ok ? probe.quota : null}
+      poll={
+        poll && collegeWeek
+          ? {
+              seasonYear: collegeWeek.season_year,
+              weekNumber: collegeWeek.week_number,
+              ranked: poll.entries.length,
+              source: poll.source,
+            }
+          : null
+      }
     />
   );
 }

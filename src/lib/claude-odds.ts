@@ -12,9 +12,15 @@ export type { ProposedGame, PullResult } from "./claude-odds-validate";
  * them. Override with ANTHROPIC_MODEL to try another without a code change.
  */
 const MODEL = process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-5";
-/** Web search can pause a turn; each resume costs one. */
-const MAX_TURNS = 8;
-const MAX_SEARCHES = 8;
+/**
+ * Web search can pause a turn, and a resume resends the whole conversation --
+ * search results included. Eight of each was how a single pull ran up tens of
+ * thousands of tokens. Three searches is enough to find a week's lines, and
+ * the turn cap stops a stuck run from resending a growing context four more
+ * times.
+ */
+const MAX_TURNS = 4;
+const MAX_SEARCHES = 3;
 
 /**
  * The model reports its findings by calling this tool. We never execute it --
@@ -152,8 +158,16 @@ export async function pullLinesWithClaude(
   seasonYear: number,
   weekNumber: number,
   sport: Sport = "nfl",
-): Promise<PullResult> {
-  const empty: PullResult = { ok: false, error: null, games: [], rejected: [], source: null };
+): Promise<PullResult & { inputTokens: number; outputTokens: number }> {
+  const empty = {
+    ok: false,
+    error: null as string | null,
+    games: [],
+    rejected: [],
+    source: null,
+    inputTokens: 0,
+    outputTokens: 0,
+  };
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return { ...empty, error: "No ANTHROPIC_API_KEY is set on this deployment." };
@@ -164,13 +178,16 @@ export async function pullLinesWithClaude(
     { role: "user", content: prompt(seasonYear, weekNumber, sport) },
   ];
 
+  // Reported back so a pull can say what it cost instead of being a mystery.
+  let inputTokens = 0;
+  let outputTokens = 0;
+
   try {
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
       const response = await client.messages.create({
         model: MODEL,
-        max_tokens: 16000,
-        thinking: { type: "adaptive" },
-        output_config: { effort: "medium" },
+        max_tokens: 8000,
+        output_config: { effort: "low" },
         tools: [
           { type: "web_search_20260209", name: "web_search", max_uses: MAX_SEARCHES },
           RECORD_LINES_TOOL,
@@ -178,15 +195,20 @@ export async function pullLinesWithClaude(
         messages,
       });
 
+      inputTokens += response.usage.input_tokens;
+      outputTokens += response.usage.output_tokens;
+
       if (response.stop_reason === "refusal") {
-        return { ...empty, error: "Claude declined the request." };
+        return { ...empty, inputTokens, outputTokens, error: "Claude declined the request." };
       }
 
       const call = response.content.find(
         (block): block is Anthropic.ToolUseBlock =>
           block.type === "tool_use" && block.name === "record_lines",
       );
-      if (call) return validate(call.input, seasonYear, weekNumber, sport);
+      if (call) {
+        return { ...validate(call.input, seasonYear, weekNumber, sport), inputTokens, outputTokens };
+      }
 
       // A server tool ran out of its turn budget. Push the turn back to resume.
       if (response.stop_reason === "pause_turn") {
@@ -205,17 +227,17 @@ export async function pullLinesWithClaude(
       messages.push({ role: "assistant", content: response.content });
     }
 
-    return { ...empty, error: "Gave up after too many turns without a result." };
+    return { ...empty, inputTokens, outputTokens, error: "Gave up after too many turns without a result." };
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
-      return { ...empty, error: "The Anthropic API key was rejected." };
+      return { ...empty, inputTokens, outputTokens, error: "The Anthropic API key was rejected." };
     }
     if (error instanceof Anthropic.RateLimitError) {
-      return { ...empty, error: "Rate limited by the Anthropic API. Try again shortly." };
+      return { ...empty, inputTokens, outputTokens, error: "Rate limited by the Anthropic API. Try again shortly." };
     }
     if (error instanceof Anthropic.APIError) {
-      return { ...empty, error: `Anthropic API error ${error.status}: ${error.message}` };
+      return { ...empty, inputTokens, outputTokens, error: `Anthropic API error ${error.status}: ${error.message}` };
     }
-    return { ...empty, error: error instanceof Error ? error.message : String(error) };
+    return { ...empty, inputTokens, outputTokens, error: error instanceof Error ? error.message : String(error) };
   }
 }

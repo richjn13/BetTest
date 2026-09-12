@@ -5,6 +5,8 @@ import { requireAdmin } from "@/lib/auth";
 import { db, unwrap } from "@/lib/db";
 import { gradeResolvedGames } from "@/lib/grading";
 import { pullLinesWithClaude } from "@/lib/claude-odds";
+import { fetchApTop25 } from "@/lib/claude-ranks";
+import { parsePastedPoll } from "@/lib/rankings";
 import { pullLinesFromFeed, pullTotalsFromFeed, type Quota } from "@/lib/odds";
 import { runRefresh, summarize } from "@/lib/refresh";
 import {
@@ -22,6 +24,8 @@ import {
   removeUser,
   setAdmin,
   applyTotals,
+  getStoredPoll,
+  savePoll,
   setGameInSlate,
   setGameTotal,
   setTotalsEnabled,
@@ -444,6 +448,12 @@ function quotaNote(quota: Quota | undefined): string {
   return ` ${quota.remaining}${allowance} monthly odds-feed calls left.`;
 }
 
+/** "Cost 4,120 tokens." Said plainly, because nobody should have to guess. */
+function tokenNote(input: number, output: number): string {
+  const total = input + output;
+  return total > 0 ? ` Cost ${total.toLocaleString()} Claude tokens.` : "";
+}
+
 function readSport(form: FormData): Sport {
   const value = text(form, "sport");
   return isSport(value) ? value : "nfl";
@@ -483,9 +493,25 @@ export async function pullGamesAction(
     // Claude spends Anthropic tokens, not odds-feed calls, so only a feed pull
     // has a quota to report.
     let feedQuota: Quota | undefined;
+    let tokens = "";
+
+    // A feed pull spends no Claude tokens at all. The rankings it shows come
+    // from the poll stored for that week, which is written once -- pasted in
+    // or fetched -- and read for nothing by every pull afterwards.
+    const stored = config.ranked ? await getStoredPoll(seasonYear, weekNumber) : null;
+
     const pulled = useClaude
-      ? await pullLinesWithClaude(seasonYear, weekNumber, sport)
-      : await pullLinesFromFeed(seasonYear, weekNumber, sport, limit).then((result) => {
+      ? await pullLinesWithClaude(seasonYear, weekNumber, sport).then((result) => {
+          tokens = tokenNote(result.inputTokens, result.outputTokens);
+          return result;
+        })
+      : await pullLinesFromFeed(
+          seasonYear,
+          weekNumber,
+          sport,
+          limit,
+          stored?.entries ?? [],
+        ).then((result) => {
           feedQuota = result.quota;
           return result;
         });
@@ -515,6 +541,11 @@ export async function pullGamesAction(
       },
     });
 
+    const ranksNote =
+      config.ranked && !stored
+        ? " No AP Top 25 is stored for this week, so no rankings are shown. Add one under Rankings."
+        : "";
+
     const parts = [
       `${counts.inserted} added, ${counts.updated} updated`,
       counts.skippedFrozen > 0 ? `${counts.skippedFrozen} already frozen and left alone` : null,
@@ -540,7 +571,7 @@ export async function pullGamesAction(
 
     return (
       `${parts.join(", ")}. Check the slate on the Games page before anyone picks.` +
-      `${moved}${missing}${rejected}${quotaNote(feedQuota)}`
+      `${moved}${missing}${rejected}${ranksNote}${quotaNote(feedQuota)}${tokens}`
     );
   });
 }
@@ -624,6 +655,85 @@ export async function toggleTotalAction(
     return enabled
       ? "Over/under on. Pull totals to fill in the number."
       : "Over/under removed from that game.";
+  });
+}
+
+/**
+ * Stores a Top 25 pasted in by hand. Costs nothing and cannot be misread by a
+ * model, which makes it the way to do this.
+ */
+export async function savePollAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const seasonYear = optionalNumber(form, "seasonYear");
+  const weekNumber = optionalNumber(form, "weekNumber");
+  const pasted = String(form.get("poll") ?? "");
+
+  return run(groupId, async (actor) => {
+    if (!seasonYear || weekNumber === null) throw new AppError("Pick a season and week.");
+
+    const entries = parsePastedPoll(pasted);
+    if (entries.length === 0) {
+      throw new AppError(
+        "No rankings found in that. Each line needs a number and a school, like \"1. Ohio State\".",
+      );
+    }
+
+    await savePoll(seasonYear, weekNumber, entries, "pasted");
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: "save_poll",
+      note: `AP Top 25 stored for ${seasonYear} week ${weekNumber}.`,
+      details: { seasonYear, weekNumber, ranked: entries.length, source: "pasted" },
+    });
+
+    return `Stored ${entries.length} ranked teams, top of the list ${entries[0].team}. Pulls of this week will use them for nothing.`;
+  });
+}
+
+/**
+ * Fetches the poll with one bounded search, for when pasting is inconvenient.
+ * Deliberate and once a week, rather than on every pull as it used to be.
+ */
+export async function fetchPollAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const seasonYear = optionalNumber(form, "seasonYear");
+  const weekNumber = optionalNumber(form, "weekNumber");
+
+  return run(groupId, async (actor) => {
+    if (!seasonYear || weekNumber === null) throw new AppError("Pick a season and week.");
+
+    const found = await fetchApTop25(seasonYear, weekNumber);
+    const cost = tokenNote(found.inputTokens, found.outputTokens);
+    if (found.entries.length === 0) {
+      throw new AppError(`${found.error ?? "Nothing came back."}${cost}`);
+    }
+
+    await savePoll(seasonYear, weekNumber, found.entries, "claude");
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: "save_poll",
+      note: `AP Top 25 fetched for ${seasonYear} week ${weekNumber}.`,
+      details: {
+        seasonYear,
+        weekNumber,
+        ranked: found.entries.length,
+        source: "claude",
+        inputTokens: found.inputTokens,
+        outputTokens: found.outputTokens,
+      },
+    });
+
+    return `Stored ${found.entries.length} ranked teams, top of the list ${found.entries[0].team}.${cost} Pulls of this week now use them for nothing.`;
   });
 }
 

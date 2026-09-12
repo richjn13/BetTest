@@ -24,6 +24,11 @@ const TABLES = [
   "admin_actions",
 ];
 
+/** Tables added after the first release, named with the file that adds them. */
+const LATER_TABLES: { table: string; migration: string }[] = [
+  { table: "ap_poll", migration: "0010_ap_poll.sql" },
+];
+
 /**
  * What each migration after the first one adds, and so what its absence breaks.
  *
@@ -205,6 +210,25 @@ async function checkDatabase(): Promise<Check[]> {
     tables.filter((check) => check.status === "fail").map((check) => check.label.slice(6)),
   );
 
+  const later = await Promise.all(
+    LATER_TABLES.map(async (step): Promise<Check> => {
+      try {
+        const { error } = await client.from(step.table).select("season_year", { head: true });
+        return error
+          ? {
+              label: `Table ${step.table}`,
+              status: "fail",
+              detail:
+                `${error.message}. Run supabase/migrations/${step.migration} in the ` +
+                "Supabase SQL editor.",
+            }
+          : { label: `Table ${step.table}`, status: "ok", detail: "Present." };
+      } catch (error) {
+        return { label: `Table ${step.table}`, status: "fail", detail: describe(error) };
+      }
+    }),
+  );
+
   const schema = await Promise.all(
     SCHEMA.map(async (step): Promise<Check> => {
       const label = `Migration ${step.migration.slice(0, 4)} (${step.table})`;
@@ -234,7 +258,7 @@ async function checkDatabase(): Promise<Check[]> {
     }),
   );
 
-  return [...tables, ...schema];
+  return [...tables, ...later, ...schema];
 }
 
 /**

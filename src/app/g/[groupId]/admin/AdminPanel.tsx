@@ -24,11 +24,13 @@ import { Feedback, NoteField, Section } from "./ui";
 import {
   adjustPointsAction,
   editPickAction,
+  fetchPollAction,
   pullGamesAction,
   pullTotalsAction,
   regenerateCodeAction,
   removeUserAction,
   setAdminAction,
+  savePollAction,
   setWeekClosedAction,
   syncOddsAction,
 } from "./actions";
@@ -45,10 +47,17 @@ type Props = {
   adjustments: PointAdjustment[];
   /** What the odds feed says is left this month. Null when it could not say. */
   quota: { remaining: number | null; used: number | null } | null;
+  /** The stored AP Top 25 for the latest college week, if there is one. */
+  poll: {
+    seasonYear: number;
+    weekNumber: number;
+    ranked: number;
+    source: string;
+  } | null;
 };
 
 export function AdminPanel(props: Props) {
-  const { viewerId, group, members, weeks, week, games, picks, actions, adjustments, quota } =
+  const { viewerId, group, members, weeks, week, games, picks, actions, adjustments, quota, poll } =
     props;
 
   return (
@@ -69,6 +78,7 @@ export function AdminPanel(props: Props) {
       {SPORTS.map((sport) => (
         <Section key={sport} title={`Pull ${sportLabel(sport)}`}>
           <GamesPullSection groupId={group.id} sport={sport} weeks={weeks} quota={quota} />
+          {sport === "ncaaf" && <RankingsSection groupId={group.id} weeks={weeks} poll={poll} />}
           <TotalsPullSection
             groupId={group.id}
             sport={sport}
@@ -346,6 +356,84 @@ function GamesPullSection({
         Pull {config.label} games
       </SubmitButton>
     </form>
+  );
+}
+
+/**
+ * The AP Top 25 for a college week, stored once and read for nothing.
+ *
+ * This used to be fetched by a model on every single pull, which is what made
+ * an NCAA pull slow and expensive next to an instant, free NFL one. Pasting a
+ * poll in costs nothing at all; the fetch button is one bounded search for
+ * when pasting is inconvenient.
+ */
+function RankingsSection({
+  groupId,
+  weeks,
+  poll,
+}: {
+  groupId: string;
+  weeks: Week[];
+  poll: Props["poll"];
+}) {
+  const [saveState, save] = useFormState(savePollAction, IDLE);
+  const [fetchState, fetchPoll] = useFormState(fetchPollAction, IDLE);
+  const latest = weeks.filter((week) => week.sport === "ncaaf").at(-1) ?? null;
+
+  const seasonYear = latest?.season_year ?? new Date().getUTCFullYear();
+  const weekNumber = latest?.week_number ?? 1;
+  const stored =
+    poll && poll.seasonYear === seasonYear && poll.weekNumber === weekNumber ? poll : null;
+
+  return (
+    <div className="mt-6 space-y-3 border-t border-edge pt-4">
+      <h3 className="text-sm font-semibold">Rankings</h3>
+      <Feedback state={saveState} />
+      <Feedback state={fetchState} />
+      <p className="text-sm text-muted">
+        The odds feed carries no poll, so rankings are stored here, once a week.
+        A pull then shows them for nothing. Without one, a pull still works and
+        simply shows no rankings.
+      </p>
+      <p className="text-sm">
+        {stored
+          ? `Week ${weekNumber} has ${stored.ranked} ranked teams stored (${stored.source}).`
+          : `Nothing stored for week ${weekNumber} yet.`}
+      </p>
+
+      <form action={save} className="space-y-2">
+        <input type="hidden" name="groupId" value={groupId} />
+        <input type="hidden" name="seasonYear" value={seasonYear} />
+        <input type="hidden" name="weekNumber" value={weekNumber} />
+        <label className="label">Paste the Top 25 (free)</label>
+        <textarea
+          name="poll"
+          rows={4}
+          placeholder={"1. Ohio State\n2. Texas A&M\n3. Georgia"}
+          className="field font-mono text-sm"
+        />
+        <p className="text-xs text-muted">
+          Copy it from anywhere. Each line needs a number and a school; records,
+          vote totals and brackets are ignored.
+        </p>
+        <SubmitButton className="btn" pendingLabel="Saving...">
+          Save rankings
+        </SubmitButton>
+      </form>
+
+      <form action={fetchPoll} className="border-t border-edge pt-3">
+        <input type="hidden" name="groupId" value={groupId} />
+        <input type="hidden" name="seasonYear" value={seasonYear} />
+        <input type="hidden" name="weekNumber" value={weekNumber} />
+        <SubmitButton className="btn py-1 text-sm text-muted" pendingLabel="Searching...">
+          Or fetch with Claude
+        </SubmitButton>
+        <p className="mt-1 text-xs text-muted">
+          One search, and it reports what it cost. Only worth it when pasting is
+          awkward.
+        </p>
+      </form>
+    </div>
   );
 }
 

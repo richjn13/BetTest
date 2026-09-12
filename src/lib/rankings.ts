@@ -73,3 +73,43 @@ export function rankFor(feedName: string, poll: PollEntry[]): number | null {
   }
   return null;
 }
+
+/**
+ * Reads a Top 25 pasted in from anywhere -- a poll page, a text message, a
+ * screenshot's text. Formats in the wild all look like a number and a school,
+ * so that is all this insists on:
+ *
+ *     1. Ohio State (12-0)      1 Ohio State      1) Ohio State 62
+ *
+ * Costs nothing and cannot hallucinate, which is the point: it is the free
+ * alternative to asking a model to go and look.
+ */
+export function parsePastedPoll(text: string): PollEntry[] {
+  const entries: PollEntry[] = [];
+  const taken = new Set<number>();
+
+  for (const line of text.split(/[\n\r]+/)) {
+    const match = /^\s*(\d{1,2})\s*[.)\]:-]?\s+(.+?)\s*$/.exec(line);
+    if (!match) continue;
+
+    const rank = Number(match[1]);
+    if (!Number.isInteger(rank) || rank < 1 || rank > 25 || taken.has(rank)) continue;
+
+    // Trailing records, vote counts and previous rankings are not the name.
+    const team = match[2]
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/\d+\s*-\s*\d+/g, " ")
+      // Vote totals and previous rankings trail the name: strip them before
+      // commas become spaces, or "Texas A&M 1,455" keeps the 1.
+      .replace(/(?:[\s,;|(\[]*[\d,]+)+\s*$/, "")
+      .replace(/[,;|]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (team.length < 2 || team.length > 60) continue;
+
+    taken.add(rank);
+    entries.push({ rank, team });
+  }
+
+  return entries.sort((a, b) => a.rank - b.rank);
+}

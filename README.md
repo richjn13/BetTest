@@ -211,11 +211,11 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are nine files to run, in order**, all in `supabase/migrations/`:
+**There are ten files to run, in order**, all in `supabase/migrations/`:
 `0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`,
 `0004_week_snapshots.sql`, `0005_profiles.sql`, `0006_schedule_changes.sql`,
-`0007_sports_and_totals.sql`, `0008_totals_await_number.sql`, then
-`0009_slate_choice.sql`. Do the first one now and come back for the others.
+`0007_sports_and_totals.sql`, `0008_totals_await_number.sql`,
+`0009_slate_choice.sql`, then `0010_ap_poll.sql`. Do the first one now and come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -248,7 +248,9 @@ name, email and avatar fields, `0006_schedule_changes.sql` adds the two stamps
 that let the app notice a moved or vanished game, `0007_sports_and_totals.sql`
 adds college football and the over/under, and `0008_totals_await_number.sql`
 lets you turn an over/under on before its number has been pulled, and
-`0009_slate_choice.sql` lets you set a game aside without deleting it.
+`0009_slate_choice.sql` lets you set a game aside without deleting it, and
+`0010_ap_poll.sql` stores the AP Top 25 so it is fetched once a week rather
+than on every pull.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
@@ -482,9 +484,20 @@ cut -- ranked teams first -- gives a list of top ten sides winning by forty,
 which is the least interesting pick sheet imaginable. So the pool is drawn from
 two orderings in turn: the ranked games, best ranking first, and the closest
 lines whoever is playing. Games from every day the week plays are included,
-Thursday night through Saturday night. The AP Top 25 is fetched separately and
-shown beside the teams; if the poll cannot be fetched the games still arrive,
-just without rankings, and a ranking has no effect on scoring.
+Thursday night through Saturday night. Rankings come from the poll stored for that week, and a
+pull shows them for nothing; without one the games still arrive, just without
+rankings, which affect what the pool is drawn from but never scoring.
+
+**A pull spends no Claude tokens.** Both competitions pull from the odds feed:
+one HTTP request, no model, a second or two. Earlier versions fetched the AP
+poll with a web search on every college pull, which is what made an NCAA pull
+slow and expensive next to an instant NFL one.
+
+**Rankings are stored once a week**, in the Rankings box under Pull NCAA. Paste
+a Top 25 in from anywhere -- each line needs a number and a school, and
+records, vote totals and brackets are ignored -- and it costs nothing. The
+"fetch with Claude" button is there for when pasting is awkward: one bounded
+search, and it reports what it cost in tokens.
 
 **College week numbers.** College football plays a Week 0 in late August, so the
 app numbers its weeks the way the sport does: Week 1 is the weekend that ends on

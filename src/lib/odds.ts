@@ -12,8 +12,7 @@ import {
   type ScoreEvent,
 } from "./odds-parse";
 import type { PullResult } from "./claude-odds-validate";
-import { fetchApTop25 } from "./claude-ranks";
-import { rankFor } from "./rankings";
+import { rankFor, type PollEntry } from "./rankings";
 import {
   SPORTS_ENDPOINT,
   oddsApiUrl,
@@ -490,6 +489,7 @@ export async function pullLinesFromFeed(
   weekNumber: number,
   sport: Sport,
   limit: number | null = null,
+  poll: PollEntry[] = [],
 ): Promise<PullResult & { quota?: Quota }> {
   const empty: PullResult = { ok: false, error: null, games: [], rejected: [], source: null };
   if (!process.env.ODDS_API_KEY) {
@@ -549,15 +549,14 @@ export async function pullLinesFromFeed(
     };
   }
 
-  // The poll only matters where it is shown, and it has to be applied before
-  // the slate is cut so the ranked games are the ones that survive the cut.
-  if (config.ranked) {
-    const poll = await fetchApTop25(seasonYear, weekNumber);
-    if (poll.length > 0) {
-      for (const game of candidates) {
-        game.homeRank = rankFor(game.homeTeam, poll);
-        game.awayRank = rankFor(game.awayTeam, poll);
-      }
+  // Rankings are applied before the pool is cut, so the ranked games are the
+  // ones that survive it. The poll is handed in already fetched: this function
+  // talks to the odds feed and nothing else, which is what keeps a pull one
+  // HTTP request and no model tokens at all.
+  if (config.ranked && poll.length > 0) {
+    for (const game of candidates) {
+      game.homeRank = rankFor(game.homeTeam, poll);
+      game.awayRank = rankFor(game.awayTeam, poll);
     }
   }
 
