@@ -215,7 +215,8 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 `0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`,
 `0004_week_snapshots.sql`, `0005_profiles.sql`, `0006_schedule_changes.sql`,
 `0007_sports_and_totals.sql`, `0008_totals_await_number.sql`,
-`0009_slate_choice.sql`, `0010_ap_poll.sql`, then `0011_team_records.sql`. Do the first one now and come back for the others.
+`0009_slate_choice.sql`, `0010_ap_poll.sql`, then
+`0011_drop_team_records.sql`. Do the first one now and come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -250,8 +251,8 @@ adds college football and the over/under, and `0008_totals_await_number.sql`
 lets you turn an over/under on before its number has been pulled, and
 `0009_slate_choice.sql` lets you set a game aside without deleting it, and
 `0010_ap_poll.sql` stores the AP Top 25 so it is fetched once a week rather
-than on every pull, and `0011_team_records.sql` keeps the win-loss records that
-come with it.
+than on every pull. `0011_drop_team_records.sql` removes two columns that a
+previous version added; it does nothing if you never ran that version.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
@@ -532,14 +533,10 @@ separate rules. Games stay in kickoff order throughout.
 
 **College cards name the school, not the mascot.** "Indiana" reads to everybody;
 "Hoosiers" does not, and there are a dozen Bulldogs. The mascot moves to the
-line underneath, with the team's record beside it where the poll gave one, and
-the ranking sits in front of the name: **#5 Indiana**, then *Hoosiers · 10-1*,
-then *vs Ohio State*. Result sentences and the consensus row use the school
-too, since a college abbreviation is built from the mascot and says nothing.
-The NFL is unchanged, because everyone knows the Chiefs.
-
-Records come from the rankings page at pull time, so they cover the top 25 and
-nobody else, and they are a snapshot rather than live.
+line underneath, and a top 25 ranking sits in front of the name: **#5 Indiana**,
+then *Hoosiers*, then *vs Ohio State*. Result sentences and the consensus row
+use the school too, since a college abbreviation is built from the mascot and
+says nothing. The NFL is unchanged, because everyone knows the Chiefs.
 
 The spread and the over/under stay on a card for the life of the game. While it
 is on, the line sits above the live score; when it is over, the line is the

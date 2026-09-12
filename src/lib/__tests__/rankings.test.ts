@@ -71,10 +71,10 @@ describe("parsePastedPoll", () => {
       4. Miami (FL) 11-1
     `);
     expect(entries).toEqual([
-      { rank: 1, team: "Ohio State", record: "12-0" },
+      { rank: 1, team: "Ohio State" },
       { rank: 2, team: "Texas A&M" },
       { rank: 3, team: "Georgia" },
-      { rank: 4, team: "Miami", record: "11-1" },
+      { rank: 4, team: "Miami" },
     ]);
   });
 
@@ -113,21 +113,21 @@ describe("pollFromHtml", () => {
         row(3, "Georgia", "11-1", "1,402"),
     );
     expect(pollFromHtml(html)).toEqual([
-      { rank: 1, team: "Ohio State", record: "12-0" },
-      { rank: 2, team: "Texas A&M", record: "11-1" },
-      { rank: 3, team: "Georgia", record: "11-1" },
+      { rank: 1, team: "Ohio State" },
+      { rank: 2, team: "Texas A&M" },
+      { rank: 3, team: "Georgia" },
     ]);
   });
 
   it("ignores a stray number that does not continue the sequence", () => {
     // The nav link "3 Scores" appears before rank 1 and must not take third.
     const entries = pollFromHtml(page(row(1, "Alabama", "10-2", "1,500")));
-    expect(entries).toEqual([{ rank: 1, team: "Alabama", record: "10-2" }]);
+    expect(entries).toEqual([{ rank: 1, team: "Alabama" }]);
   });
 
   it("stops at the first gap rather than mis-numbering the rest", () => {
     const html = page(row(1, "Oregon", "12-0", "1,550") + row(3, "Georgia", "11-1", "1,402"));
-    expect(pollFromHtml(html)).toEqual([{ rank: 1, team: "Oregon", record: "12-0" }]);
+    expect(pollFromHtml(html)).toEqual([{ rank: 1, team: "Oregon" }]);
   });
 
   it("returns nothing for a page with no rankings in it", () => {

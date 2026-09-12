@@ -12,7 +12,7 @@ import {
   type ScoreEvent,
 } from "./odds-parse";
 import type { PullResult } from "./claude-odds-validate";
-import { entryFor, type PollEntry } from "./rankings";
+import { rankFor, type PollEntry } from "./rankings";
 import {
   SPORTS_ENDPOINT,
   oddsApiUrl,
@@ -545,8 +545,6 @@ export async function pullLinesFromFeed(
       homeSpread: line.spread,
       homeRank: null,
       awayRank: null,
-      homeRecord: null,
-      awayRecord: null,
     });
   }
 
@@ -566,12 +564,8 @@ export async function pullLinesFromFeed(
   // HTTP request and no model tokens at all.
   if (config.ranked && poll.length > 0) {
     for (const game of candidates) {
-      const home = entryFor(game.homeTeam, poll);
-      const away = entryFor(game.awayTeam, poll);
-      game.homeRank = home?.rank ?? null;
-      game.awayRank = away?.rank ?? null;
-      game.homeRecord = home?.record ?? null;
-      game.awayRecord = away?.record ?? null;
+      game.homeRank = rankFor(game.homeTeam, poll);
+      game.awayRank = rankFor(game.awayTeam, poll);
     }
   }
 

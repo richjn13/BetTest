@@ -7,12 +7,7 @@
  * matching can be tested without a network call.
  */
 
-export type PollEntry = {
-  rank: number;
-  team: string;
-  /** Win-loss record as the poll prints it, e.g. "10-1". Absent if not shown. */
-  record?: string;
-};
+export type PollEntry = { rank: number; team: string };
 
 /** Lowercase, strip punctuation, collapse spaces. "Texas A&M" -> "texas a m". */
 export function normalizeSchool(name: string): string {
@@ -38,8 +33,7 @@ export function readPoll(input: unknown): PollEntry[] {
     if (team.length < 2 || team.length > 60) continue;
     if (taken.has(rank)) continue;
     taken.add(rank);
-    const record = typeof row.record === "string" ? row.record.trim() : "";
-    entries.push(/^\d{1,2}-\d{1,2}$/.test(record) ? { rank, team, record } : { rank, team });
+    entries.push({ rank, team });
   }
   return entries;
 }
@@ -63,7 +57,7 @@ const CONTINUES_A_NAME = new Set([
  * refused when the word just past the school looks like part of a longer
  * school name.
  */
-export function entryFor(feedName: string, poll: PollEntry[]): PollEntry | null {
+export function rankFor(feedName: string, poll: PollEntry[]): number | null {
   const target = normalizeSchool(feedName);
   const ordered = [...poll].sort(
     (a, b) => normalizeSchool(b.team).length - normalizeSchool(a.team).length,
@@ -71,18 +65,13 @@ export function entryFor(feedName: string, poll: PollEntry[]): PollEntry | null 
 
   for (const entry of ordered) {
     const school = normalizeSchool(entry.team);
-    if (target === school) return entry;
+    if (target === school) return entry.rank;
     if (!target.startsWith(`${school} `)) continue;
     const next = target.slice(school.length + 1).split(" ")[0];
     if (CONTINUES_A_NAME.has(next)) continue;
-    return entry;
+    return entry.rank;
   }
   return null;
-}
-
-/** Just the position, for callers that only want the number. */
-export function rankFor(feedName: string, poll: PollEntry[]): number | null {
-  return entryFor(feedName, poll)?.rank ?? null;
 }
 
 /**
@@ -114,10 +103,6 @@ export function parsePastedPoll(
     // keeps it.
     if (!options.sequential && taken.has(rank)) continue;
 
-    // A record beside the name is worth keeping: it tells somebody who does
-    // not follow college football whether this is a good team.
-    const record = /\b(\d{1,2})\s*-\s*(\d{1,2})\b/.exec(match[2]);
-
     // Trailing records, vote counts and previous rankings are not the name.
     const team = match[2]
       .replace(/\([^)]*\)/g, " ")
@@ -131,7 +116,7 @@ export function parsePastedPoll(
     if (team.length < 2 || team.length > 60) continue;
 
     if (!options.sequential) taken.add(rank);
-    entries.push(record ? { rank, team, record: `${record[1]}-${record[2]}` } : { rank, team });
+    entries.push({ rank, team });
   }
 
   // A page read top to bottom has to keep its order so the sequence check can

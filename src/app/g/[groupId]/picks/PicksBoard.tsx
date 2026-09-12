@@ -471,8 +471,6 @@ function SideButton({
   const opponent = side === "home" ? game.away_team : game.home_team;
   const score = side === "home" ? game.final_home_score : game.final_away_score;
   const rank = side === "home" ? game.home_rank : game.away_rank;
-  const record = side === "home" ? game.home_record : game.away_record;
-
   // College is named by the school, not the mascot. A card reading "Bison at
   // Hoosiers" is unreadable to anyone who does not follow the sport, and there
   // are a dozen Bulldogs. The NFL is the other way round: everyone knows the
@@ -480,9 +478,7 @@ function SideButton({
   const college = sport === "ncaaf";
   const split = splitTeamName(team);
   const headline = college ? split.school : nickname(team);
-  const subtitle = college
-    ? [split.mascot, record].filter(Boolean).join(" · ")
-    : null;
+  const subtitle = college ? split.mascot : null;
   const versus = college ? splitTeamName(opponent).school : abbreviate(opponent);
 
   return (

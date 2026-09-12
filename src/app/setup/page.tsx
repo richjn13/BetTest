@@ -62,11 +62,6 @@ const SCHEMA: { table: string; columns: string[]; migration: string }[] = [
   },
   { table: "picks", columns: ["market"], migration: "0007_sports_and_totals.sql" },
   { table: "games", columns: ["excluded_at"], migration: "0009_slate_choice.sql" },
-  {
-    table: "games",
-    columns: ["home_record", "away_record"],
-    migration: "0011_team_records.sql",
-  },
 ];
 
 function checkPresence(name: string, optional = false): Check {
