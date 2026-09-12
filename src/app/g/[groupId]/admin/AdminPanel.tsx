@@ -265,7 +265,7 @@ function GamesPullSection({
       <Feedback state={state} />
       <p className="text-sm text-muted">
         {sport === "ncaaf"
-          ? "Takes the twenty best Saturday games of the week: ranked teams first, then the closest lines."
+          ? `Offers ${config.poolSize} games from across the week to choose from: ranked teams and close lines in equal measure, not one or the other.`
           : "Takes the full slate for the week."}{" "}
         Each line is locked at the moment of the pull, so the odds feed leaves
         it alone and only another pull replaces it.

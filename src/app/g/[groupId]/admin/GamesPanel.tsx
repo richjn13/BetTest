@@ -272,14 +272,18 @@ function GamesSection({
                   />
                   <SubmitButton
                     className={`btn py-1 text-sm ${
-                      game.excluded_at ? "border-accent text-accent" : "text-muted"
+                      game.excluded_at
+                        ? "border-edge text-muted"
+                        : "border-accent text-[rgb(var(--win))]"
                     }`}
                     pendingLabel="Saving..."
                   >
-                    {game.excluded_at ? "Put back in" : "Set aside"}
+                    {game.excluded_at ? "Off" : "On"}
                   </SubmitButton>
                   <span className="text-xs text-muted">
-                    {game.excluded_at ? "Members cannot see this game" : "In the slate"}
+                    {game.excluded_at
+                      ? "Off. Members do not see this game."
+                      : "On. In this week's slate."}
                   </span>
                 </form>
 
@@ -416,22 +420,38 @@ function GamesSection({
                 </div>
 
 
-                <form action={remove} className="mt-2 flex gap-2">
-                  <input type="hidden" name="groupId" value={groupId} />
-                  <input type="hidden" name="gameId" value={game.id} />
-                  <input
-                    name="note"
-                    required
-                    placeholder="reason for deleting"
-                    className="field py-1 text-sm"
-                  />
-                  <SubmitButton
-                    className="btn shrink-0 border-red-500/40 py-1 text-sm text-red-500"
-                    pendingLabel="Deleting..."
-                  >
-                    Delete game
-                  </SubmitButton>
-                </form>
+                {/*
+                  Deleting takes every pick on the game with it, and setting a
+                  game aside does what deleting was being used for. So it is
+                  folded away: reachable for a game that should never have
+                  existed, not sitting under every row inviting a tap.
+                */}
+                <details className="mt-2">
+                  <summary className="cursor-pointer list-none text-xs text-muted">
+                    Remove permanently
+                  </summary>
+                  <p className="mb-2 mt-2 text-xs text-muted">
+                    This deletes the game and every pick on it, and cannot be
+                    undone. To take a game out of the week, set it aside above
+                    instead: it keeps its line and can come back.
+                  </p>
+                  <form action={remove} className="flex gap-2">
+                    <input type="hidden" name="groupId" value={groupId} />
+                    <input type="hidden" name="gameId" value={game.id} />
+                    <input
+                      name="note"
+                      required
+                      placeholder="reason for deleting"
+                      className="field py-1 text-sm"
+                    />
+                    <SubmitButton
+                      className="btn shrink-0 border-red-500/40 py-1 text-sm text-red-500"
+                      pendingLabel="Deleting..."
+                    >
+                      Delete
+                    </SubmitButton>
+                  </form>
+                </details>
               </li>
               );
             })}

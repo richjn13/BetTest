@@ -468,12 +468,15 @@ feed has not posted yet; it is slower, it costs Anthropic tokens rather than
 quota, and its numbers are a model's reading of a betting page. Use the feed
 unless it comes back empty.
 
-**NFL pulls the whole slate. NCAA pulls twenty games.** College plays fifty or
-more games a Saturday, which is nobody's idea of a pick sheet, so the pull keeps
-the twenty worth picking: ranked teams first, best ranking first, then the games
-with the closest lines. The AP Top 25 is fetched separately and shown beside the
-teams. If the poll cannot be fetched the games still arrive, just without
-rankings, and the ranking has no effect on scoring.
+**NFL pulls the whole slate. NCAA pulls a pool of forty.** College plays sixty
+or more games a week, which is nobody's idea of a pick sheet, but the obvious
+cut -- ranked teams first -- gives a list of top ten sides winning by forty,
+which is the least interesting pick sheet imaginable. So the pool is drawn from
+two orderings in turn: the ranked games, best ranking first, and the closest
+lines whoever is playing. Games from every day the week plays are included,
+Thursday night through Saturday night. The AP Top 25 is fetched separately and
+shown beside the teams; if the poll cannot be fetched the games still arrive,
+just without rankings, and a ranking has no effect on scoring.
 
 **College week numbers.** College football plays a Week 0 in late August, so the
 app numbers its weeks the way the sport does: Week 1 is the weekend that ends on
@@ -486,14 +489,22 @@ games you did pull.
 
 ### Choosing the slate
 
-A college pull returns twenty games so there is something to choose from. Ten
-or so is a week worth picking, and which ten is nobody's judgement but yours.
+Ten or so games is a week worth picking, and which ten is nobody's judgement
+but yours.
 
-On the **Games** tab each game has **Set aside**, which takes it out of the
-week without deleting it: members stop seeing it, and it keeps its line if you
-put it back. The count beside the week heading reads "8 of 10 in the slate", so
-you can see where you are. Ten is a target, not a limit -- run twelve or six if
-you would rather.
+A college pull offers forty games from across the week -- ranked teams and
+close lines in equal measure, Thursday night through Saturday night -- so the
+choosing is yours.
+
+On the **Games** tab each game has an **On / Off** switch. Off takes it out of
+the week without deleting it: members stop seeing it, and it keeps its line if
+you switch it back on. The count beside the week heading reads "8 of 10 in the
+slate", so you can see where you are. Ten is a target, not a limit -- run
+twelve or six if you would rather.
+
+Deleting a game is a separate thing, folded away under **Remove permanently**,
+because it takes every pick on the game with it and cannot be undone. Switching
+off is what you want almost every time.
 
 A game that somebody has already picked cannot be set aside. Excluding it would
 either void their pick or keep scoring one they can no longer see, so the app

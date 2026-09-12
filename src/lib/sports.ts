@@ -13,8 +13,6 @@ export type SportConfig = {
   short: string;
   /** The Odds API's identifier. */
   oddsApiKey: string;
-  /** Whether games are confined to Saturdays, as college games are here. */
-  saturdayOnly: boolean;
   /** Whether a poll ranking is worth showing beside a team. */
   ranked: boolean;
   /**
@@ -25,6 +23,11 @@ export type SportConfig = {
   curatedSlate: boolean;
   /** How many games make a good week to pick, where the slate is chosen. */
   slateGoal: number | null;
+  /**
+   * How many games a pull offers to choose from. Null takes the whole slate,
+   * which is what the NFL's thirteen-odd games a week are.
+   */
+  poolSize: number | null;
   highestWeek: number;
 };
 
@@ -34,10 +37,10 @@ const SPORT_CONFIG: Record<Sport, SportConfig> = {
     label: "NFL",
     short: "NFL",
     oddsApiKey: "americanfootball_nfl",
-    saturdayOnly: false,
     ranked: false,
     curatedSlate: false,
     slateGoal: null,
+    poolSize: null,
     highestWeek: 22,
   },
   ncaaf: {
@@ -45,10 +48,10 @@ const SPORT_CONFIG: Record<Sport, SportConfig> = {
     label: "NCAA",
     short: "NCAA",
     oddsApiKey: "americanfootball_ncaaf",
-    saturdayOnly: true,
     ranked: true,
     curatedSlate: true,
     slateGoal: 10,
+    poolSize: 40,
     highestWeek: 16,
   },
 };

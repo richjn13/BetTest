@@ -94,19 +94,6 @@ export function ncaafSeasonStartUtc(seasonYear: number): number {
   return firstMonday - 6 * MS_PER_DAY;
 }
 
-/**
- * Is this kickoff on a Saturday, in the sense that matters for college
- * football? The window runs from Saturday noon UTC, which is morning on the
- * east coast, to Sunday 09:00 UTC, which is after the latest west coast game.
- */
-export function isSaturdayGame(kickoff: Date): boolean {
-  const day = kickoff.getUTCDay();
-  const hour = kickoff.getUTCHours();
-  if (day === 6) return hour >= 12;
-  if (day === 0) return hour < 9;
-  return false;
-}
-
 /** The week a college kickoff belongs to, counting Saturdays from the opener. */
 export function ncaafWeekForKickoff(kickoff: Date, seasonYear?: number): SeasonWeek {
   const year = kickoff.getUTCFullYear();

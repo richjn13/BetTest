@@ -106,22 +106,55 @@ export type Candidate = {
 /**
  * Cuts a long slate down to the games worth offering.
  *
- * College football plays well over fifty games a Saturday, which is far too
- * many to pick from. Ranked teams come first, best ranking first, and after
- * them the closest lines, on the reasoning that a pick'em is only interesting
- * where the outcome is in doubt.
+ * College football plays sixty or more games a week, which is far too many to
+ * pick from, but the obvious cut -- ranked teams first -- produces a list of
+ * top ten sides beating nobody by forty, which is the least interesting pick
+ * sheet imaginable. So two orderings are drawn from in turn: the ranked games,
+ * best ranking first, and the closest lines whatever the names. A pool built
+ * that way has the marquee games in it and a competitive game between every
+ * pair of them.
  */
 export function selectGames(candidates: Candidate[], limit: number): Candidate[] {
-  const best = (game: Candidate) =>
-    Math.min(game.homeRank ?? 99, game.awayRank ?? 99);
+  const bestRank = (game: Candidate) => Math.min(game.homeRank ?? 99, game.awayRank ?? 99);
 
-  return [...candidates]
-    .sort((a, b) => {
-      const rank = best(a) - best(b);
-      if (rank !== 0) return rank;
-      const closeness = Math.abs(a.homeSpread) - Math.abs(b.homeSpread);
-      if (closeness !== 0) return closeness;
-      return a.kickoffIso.localeCompare(b.kickoffIso);
-    })
-    .slice(0, limit);
+  const ranked = candidates
+    .filter((game) => bestRank(game) < 99)
+    .sort((a, b) => bestRank(a) - bestRank(b) || compareCloseness(a, b));
+
+  const closest = [...candidates].sort(compareCloseness);
+
+  const chosen: Candidate[] = [];
+  const taken = new Set<Candidate>();
+  const cursor = { ranked: 0, closest: 0 };
+
+  // Turns alternate whether or not a turn produced anything, so a spent list
+  // yields to the other one instead of stalling the loop.
+  for (let turn = 0; chosen.length < limit; turn += 1) {
+    if (cursor.ranked >= ranked.length && cursor.closest >= closest.length) break;
+
+    const key = turn % 2 === 0 ? "ranked" : "closest";
+    const source = key === "ranked" ? ranked : closest;
+
+    // Walk past anything the other ordering already claimed.
+    while (cursor[key] < source.length && taken.has(source[cursor[key]])) {
+      cursor[key] += 1;
+    }
+    if (cursor[key] >= source.length) continue;
+
+    const game = source[cursor[key]];
+    cursor[key] += 1;
+    taken.add(game);
+    chosen.push(game);
+  }
+
+  // Back into kickoff order: a pool is read as a schedule, not as a ranking.
+  return chosen.sort((a, b) => a.kickoffIso.localeCompare(b.kickoffIso));
+}
+
+/** Closest line first, and an earlier kickoff breaks a tie. */
+function compareCloseness(a: Candidate, b: Candidate): number {
+  return (
+    Math.abs(a.homeSpread) - Math.abs(b.homeSpread) ||
+    a.kickoffIso.localeCompare(b.kickoffIso)
+  );
 }

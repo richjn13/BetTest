@@ -141,35 +141,63 @@ describe("extractTotal", () => {
 });
 
 describe("selectGames", () => {
-  const game = (name: string, spread: number, homeRank: number | null = null) => ({
+  const game = (
+    name: string,
+    spread: number,
+    homeRank: number | null = null,
+    hour = 17,
+  ) => ({
     awayTeam: `${name} away`,
-    homeTeam: `${name} home`,
-    kickoffIso: "2026-09-12T17:00:00Z",
+    homeTeam: name,
+    kickoffIso: `2026-09-12T${String(hour).padStart(2, "0")}:00:00Z`,
     homeSpread: spread,
     homeRank,
     awayRank: null,
   });
 
-  it("puts the best ranked game first", () => {
-    const chosen = selectGames([game("a", 1), game("b", 20, 3), game("c", 14, 1)], 3);
-    expect(chosen.map((entry) => entry.homeTeam)).toEqual([
-      "c home",
-      "b home",
-      "a home",
-    ]);
+  const names = (chosen: { homeTeam: string }[]) => chosen.map((entry) => entry.homeTeam);
+
+  it("mixes ranked games with close ones instead of taking all the ranked", () => {
+    const pool = [
+      game("blowout-1", -38, 1),
+      game("blowout-2", -35, 2),
+      game("blowout-3", -31, 3),
+      game("tight-1", 1),
+      game("tight-2", -2.5),
+      game("tight-3", 3),
+    ];
+    const chosen = names(selectGames(pool, 4));
+
+    // Two from each ordering, rather than the four best rankings.
+    expect(chosen.filter((name) => name.startsWith("blowout"))).toHaveLength(2);
+    expect(chosen.filter((name) => name.startsWith("tight"))).toHaveLength(2);
+    expect(chosen).toContain("blowout-1");
+    expect(chosen).toContain("tight-1");
   });
 
-  it("orders unranked games by how close the line is", () => {
-    const chosen = selectGames([game("a", -17), game("b", 2.5), game("c", -7)], 3);
-    expect(chosen.map((entry) => entry.homeTeam)).toEqual([
-      "b home",
-      "c home",
-      "a home",
-    ]);
+  it("returns the pool in kickoff order", () => {
+    const chosen = selectGames(
+      [game("late", -3, null, 23), game("early", -14, 1, 16), game("middle", -7, null, 20)],
+      3,
+    );
+    expect(names(chosen)).toEqual(["early", "middle", "late"]);
   });
 
-  it("cuts the slate to the limit", () => {
+  it("never lists the same game twice, whichever ordering reached it", () => {
+    // The closest line also belongs to the best ranked team.
+    const pool = [game("both", -1, 1), game("other", -9), game("third", -20)];
+    const chosen = names(selectGames(pool, 3));
+    expect(new Set(chosen).size).toBe(3);
+  });
+
+  it("copes with a pool that has no ranked teams at all", () => {
+    const pool = [game("a", -17), game("b", 2.5), game("c", -7)];
+    expect(names(selectGames(pool, 2)).sort()).toEqual(["b", "c"]);
+  });
+
+  it("cuts the slate to the limit, and stops when the pool runs out", () => {
     const many = Array.from({ length: 60 }, (_, index) => game(String(index), index));
-    expect(selectGames(many, 20)).toHaveLength(20);
+    expect(selectGames(many, 40)).toHaveLength(40);
+    expect(selectGames(many.slice(0, 5), 40)).toHaveLength(5);
   });
 });

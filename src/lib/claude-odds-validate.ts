@@ -9,7 +9,7 @@
  * Kept free of server imports so the rules can be tested directly.
  */
 import { NFL_TEAMS } from "./teams";
-import { isSaturdayGame, weekForSport } from "./season-week";
+import { weekForSport } from "./season-week";
 import { sportConfig, type Sport } from "./sports";
 
 export type ProposedGame = {
@@ -97,11 +97,6 @@ export function validate(
       result.rejected.push(`${label}: kickoff time could not be read`);
       continue;
     }
-    if (config.saturdayOnly && !isSaturdayGame(kickoff)) {
-      result.rejected.push(`${label}: not a Saturday game`);
-      continue;
-    }
-
     // Ask the same function that assigns every other game its week. A fixed
     // day window around the week's nominal start would reject the Super Bowl,
     // which sits two weeks out because of the bye before it.
@@ -113,7 +108,7 @@ export function validate(
     // slack only decides what is accepted, never where it lands.
     const placed = weekForSport(kickoff, sport, seasonYear);
     const drift = Math.abs(placed.weekNumber - weekNumber);
-    if (drift > (config.saturdayOnly ? 1 : 0)) {
+    if (drift > (config.curatedSlate ? 1 : 0)) {
       result.rejected.push(
         `${label}: kickoff ${kickoff.toISOString().slice(0, 10)} lands in week ` +
           `${placed.weekNumber}, not week ${weekNumber}`,

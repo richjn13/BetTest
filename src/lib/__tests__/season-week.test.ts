@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  isSaturdayGame,
   ncaafSeasonStartUtc,
   ncaafWeekForKickoff,
   seasonStartUtc,
@@ -101,27 +100,6 @@ describe("college football weeks", () => {
 
   it("puts January games in the season that started the previous August", () => {
     expect(ncaafWeekForKickoff(at("2027-01-09T00:00:00Z")).seasonYear).toBe(2026);
-  });
-});
-
-describe("isSaturdayGame", () => {
-  it("accepts Saturday afternoon through the late window", () => {
-    expect(isSaturdayGame(at("2026-09-05T16:00:00Z"))).toBe(true);  // noon ET
-    expect(isSaturdayGame(at("2026-09-05T23:30:00Z"))).toBe(true);  // evening ET
-    expect(isSaturdayGame(at("2026-09-06T03:00:00Z"))).toBe(true);  // late, west coast
-  });
-
-  it("rejects a Thursday or Friday game", () => {
-    expect(isSaturdayGame(at("2026-09-03T23:00:00Z"))).toBe(false);
-    expect(isSaturdayGame(at("2026-09-04T23:00:00Z"))).toBe(false);
-  });
-
-  it("rejects Sunday proper, which is the NFL", () => {
-    expect(isSaturdayGame(at("2026-09-06T17:00:00Z"))).toBe(false);
-  });
-
-  it("rejects Saturday morning UTC, which is Friday night in the US", () => {
-    expect(isSaturdayGame(at("2026-09-05T02:00:00Z"))).toBe(false);
   });
 });
 

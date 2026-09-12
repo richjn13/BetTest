@@ -1,7 +1,7 @@
 import "server-only";
 import { db, unwrap } from "./db";
 import { env } from "./env";
-import { isSaturdayGame, weekForSport } from "./season-week";
+import { weekForSport } from "./season-week";
 import {
   extractHomeSpread,
   extractScores,
@@ -520,7 +520,6 @@ export async function pullLinesFromFeed(
 
     const placed = weekForSport(kickoff, sport, seasonYear);
     if (placed.weekNumber !== weekNumber) continue;
-    if (config.saturdayOnly && !isSaturdayGame(kickoff)) continue;
 
     const line = extractHomeSpread(event, preferred);
     if (!line) {

@@ -437,9 +437,6 @@ export async function adjustPointsAction(
 
 // ------------------------------------------------------------------- pulls
 
-/** How many college games a pull offers. The full Saturday slate is unpickable. */
-const NCAAF_SLATE_SIZE = 20;
-
 function readSport(form: FormData): Sport {
   const value = text(form, "sport");
   return isSport(value) ? value : "nfl";
@@ -475,7 +472,7 @@ export async function pullGamesAction(
       );
     }
 
-    const limit = sport === "ncaaf" ? NCAAF_SLATE_SIZE : null;
+    const limit = config.poolSize;
     const pulled = useClaude
       ? await pullLinesWithClaude(seasonYear, weekNumber, sport)
       : await pullLinesFromFeed(seasonYear, weekNumber, sport, limit);
