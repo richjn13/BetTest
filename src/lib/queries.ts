@@ -487,7 +487,7 @@ const GAME_COLUMNS =
   "spread_updated_at, spread_frozen_at, frozen_home_spread, final_home_score, " +
   "final_away_score, score_overridden_at, status, odds_api_event_id, spread_locked_at, " +
   "kickoff_changed_at, last_seen_in_feed_at, home_rank, away_rank, " +
-  "total_points, frozen_total, totals_enabled, excluded_at";
+  "total_points, frozen_total, totals_enabled, excluded_at, home_record, away_record";
 
 /**
  * A week's games. Admins ask for all of them; members only ever see the ones
@@ -642,6 +642,8 @@ export async function applyLockedLines(
         last_seen_in_feed_at: now,
         home_rank: game.homeRank,
         away_rank: game.awayRank,
+        home_record: game.homeRecord ?? null,
+        away_record: game.awayRecord ?? null,
       });
       continue;
     }
@@ -674,6 +676,8 @@ export async function applyLockedLines(
         last_seen_in_feed_at: now,
         home_rank: game.homeRank,
         away_rank: game.awayRank,
+        home_record: game.homeRecord ?? null,
+        away_record: game.awayRecord ?? null,
         ...(timeMoved ? { kickoff_changed_at: now } : {}),
       },
     });

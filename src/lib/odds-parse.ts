@@ -101,6 +101,8 @@ export type Candidate = {
   homeSpread: number;
   homeRank: number | null;
   awayRank: number | null;
+  homeRecord?: string | null;
+  awayRecord?: string | null;
 };
 
 /**

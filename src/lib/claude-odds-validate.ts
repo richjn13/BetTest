@@ -20,6 +20,9 @@ export type ProposedGame = {
   /** Poll position, college only. Null when unranked or not applicable. */
   homeRank: number | null;
   awayRank: number | null;
+  /** Win-loss record at pull time, from the poll. Ranked college teams only. */
+  homeRecord?: string | null;
+  awayRecord?: string | null;
 };
 
 export type PullResult = {

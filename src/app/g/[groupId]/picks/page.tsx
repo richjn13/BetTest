@@ -98,6 +98,7 @@ export default async function PicksPage({
                     groupId={params.groupId}
                     weekLabel={`${sportLabel(board.sport)} ${board.week.label}`}
                     readOnly={false}
+                    sport={board.sport}
                   />
                 )}
               </section>
@@ -164,6 +165,7 @@ export default async function PicksPage({
           groupId={params.groupId}
           weekLabel={`${sportLabel(sport)} ${week.label}`}
           readOnly={false}
+          sport={sport}
         />
       )}
     </div>

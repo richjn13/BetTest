@@ -3,7 +3,8 @@
 import { useCallback, useState, useTransition } from "react";
 import { formatKickoff, spreadForSide, timeUntil } from "@/lib/format";
 import { consensusVerdict, describeOutcome } from "@/lib/result";
-import { abbreviate, nickname } from "@/lib/teams";
+import { abbreviate, nickname, splitTeamName } from "@/lib/teams";
+import type { Sport } from "@/lib/sports";
 import {
   countPicked,
   gameSetKey,
@@ -33,11 +34,13 @@ export function PicksBoard({
   groupId,
   weekLabel,
   readOnly,
+  sport,
 }: {
   cards: GameCard[];
   groupId: string;
   weekLabel: string;
   readOnly: boolean;
+  sport: Sport;
 }) {
   const [selections, setSelections] = useState<Selections>(() => initialSelections(cards));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -147,6 +150,7 @@ export function PicksBoard({
             saving={saving[card.game.id] ?? false}
             error={errors[card.game.id]}
             readOnly={readOnly}
+            sport={sport}
             onChoose={(side) => choose(card.game.id, side)}
             onPickTotal={(side) => pickTotal(card.game.id, side)}
             onToggleLock={() => toggleLock(card.game.id)}
@@ -168,6 +172,7 @@ function GameRow({
   saving,
   error,
   readOnly,
+  sport,
   onChoose,
   onPickTotal,
   onToggleLock,
@@ -177,6 +182,7 @@ function GameRow({
   saving: boolean;
   error?: string;
   readOnly: boolean;
+  sport: Sport;
   onChoose: (side: Side) => void;
   onPickTotal: (side: TotalSide) => void;
   onToggleLock: () => void;
@@ -187,6 +193,7 @@ function GameRow({
   const countdown = timeUntil(game.kickoff_time);
 
   const outcome = describeOutcome({
+    sport,
     homeTeam: game.home_team,
     awayTeam: game.away_team,
     finalHomeScore: game.final_home_score,
@@ -247,6 +254,7 @@ function GameRow({
             // ends. It is the number the pick was graded against, so with a
             // score beside it the card explains itself.
             spread={spread}
+            sport={sport}
             selected={selection?.side === side}
             covered={outcome.covered === side}
             open={open}
@@ -293,7 +301,7 @@ function GameRow({
         </div>
       )}
 
-      <Consensus card={card} outcome={outcome} />
+      <Consensus card={card} outcome={outcome} sport={sport} />
 
       {error && (
         <p role="alert" className="border-t border-edge px-3 py-2 text-xs text-red-500">
@@ -311,15 +319,21 @@ function GameRow({
 function Consensus({
   card,
   outcome,
+  sport,
 }: {
   card: GameCard;
   outcome: ReturnType<typeof describeOutcome>;
+  sport: Sport;
 }) {
   const { game, consensus, revealed } = card;
   if (!consensus || consensus.total === 0) return null;
 
-  const homeAbbr = abbreviate(game.home_team);
-  const awayAbbr = abbreviate(game.away_team);
+  // A three-letter college abbreviation is made from the mascot and means
+  // nothing: Indiana Hoosiers becomes HOO. The school reads at any width.
+  const short = (team: string) =>
+    sport === "ncaaf" ? splitTeamName(team).school : abbreviate(team);
+  const homeAbbr = short(game.home_team);
+  const awayAbbr = short(game.away_team);
 
   const result = consensusVerdict(consensus, outcome.covered);
   const verdict =
@@ -438,6 +452,7 @@ function SideButton({
   side,
   game,
   spread,
+  sport,
   selected,
   covered,
   open,
@@ -446,6 +461,7 @@ function SideButton({
   side: Side;
   game: GameCard["game"];
   spread: number | null;
+  sport: Sport;
   selected: boolean;
   covered: boolean;
   open: boolean;
@@ -455,6 +471,19 @@ function SideButton({
   const opponent = side === "home" ? game.away_team : game.home_team;
   const score = side === "home" ? game.final_home_score : game.final_away_score;
   const rank = side === "home" ? game.home_rank : game.away_rank;
+  const record = side === "home" ? game.home_record : game.away_record;
+
+  // College is named by the school, not the mascot. A card reading "Bison at
+  // Hoosiers" is unreadable to anyone who does not follow the sport, and there
+  // are a dozen Bulldogs. The NFL is the other way round: everyone knows the
+  // Chiefs, and the city is the part that repeats.
+  const college = sport === "ncaaf";
+  const split = splitTeamName(team);
+  const headline = college ? split.school : nickname(team);
+  const subtitle = college
+    ? [split.mascot, record].filter(Boolean).join(" · ")
+    : null;
+  const versus = college ? splitTeamName(opponent).school : abbreviate(opponent);
 
   return (
     <button
@@ -476,11 +505,16 @@ function SideButton({
           {rank !== null && (
             <span className="mr-1 font-mono text-xs font-bold text-accent">#{rank}</span>
           )}
-          {nickname(team)}
+          {headline}
         </span>
-        <span className="block text-[11px] text-muted">
+        {subtitle && (
+          <span className="block truncate text-[11px] leading-tight text-muted">
+            {subtitle}
+          </span>
+        )}
+        <span className="block truncate text-[11px] text-muted">
           {side === "away" ? "at " : "vs "}
-          {abbreviate(opponent)}
+          {versus}
         </span>
       </span>
       <span className="shrink-0 text-right">

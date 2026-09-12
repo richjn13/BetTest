@@ -1,6 +1,6 @@
 import { spreadForSide } from "./format";
 import { winningSide, type GradableGame, type Side } from "./scoring";
-import { abbreviate } from "./teams";
+import { shortName } from "./teams";
 
 /**
  * Plain-language account of how a finished game turned out and what it did to
@@ -28,9 +28,14 @@ export type OutcomeInput = {
   pickedSide: Side | null;
   isLock: boolean;
   points: number | null;
+  /** Decides how a team is named in the sentence. Defaults to the NFL. */
+  sport?: "nfl" | "ncaaf";
 };
 
 export function describeOutcome(input: OutcomeInput): GameOutcome {
+  // College names read as the school, the NFL as a three-letter code.
+  const short = (team: string) => shortName(team, input.sport ?? "nfl");
+
   const empty: GameOutcome = {
     covered: null,
     score: null,
@@ -53,10 +58,10 @@ export function describeOutcome(input: OutcomeInput): GameOutcome {
   const away = input.finalAwayScore;
   const score =
     home === away
-      ? `${abbreviate(input.awayTeam)} ${away}, ${abbreviate(input.homeTeam)} ${home} (tied)`
+      ? `${short(input.awayTeam)} ${away}, ${short(input.homeTeam)} ${home} (tied)`
       : home > away
-        ? `${abbreviate(input.homeTeam)} ${home}, ${abbreviate(input.awayTeam)} ${away}`
-        : `${abbreviate(input.awayTeam)} ${away}, ${abbreviate(input.homeTeam)} ${home}`;
+        ? `${short(input.homeTeam)} ${home}, ${short(input.awayTeam)} ${away}`
+        : `${short(input.awayTeam)} ${away}, ${short(input.homeTeam)} ${home}`;
 
   if (input.status !== "final") {
     return { ...empty, score, verdict: "pending" };
@@ -80,19 +85,19 @@ export function describeOutcome(input: OutcomeInput): GameOutcome {
   let line: string;
   if (covered === "push") {
     const number = input.spread === null ? "" : ` (${spreadForSide(input.spread, "home")})`;
-    line = `${abbreviate(winner)} won by ${margin}, landing exactly on the number${number}. Push.`;
+    line = `${short(winner)} won by ${margin}, landing exactly on the number${number}. Push.`;
   } else if (input.spread === null) {
     line =
       home === away
         ? "Tied, with no line to grade against."
-        : `${abbreviate(winner)} won by ${margin}. No line was set.`;
+        : `${short(winner)} won by ${margin}. No line was set.`;
   } else {
     const coveringTeam = covered === "home" ? input.homeTeam : input.awayTeam;
     const coveringLine = spreadForSide(input.spread, covered);
     line =
       home === away
-        ? `Tied. ${abbreviate(coveringTeam)} ${coveringLine} covered.`
-        : `${abbreviate(winner)} won by ${margin}. ${abbreviate(coveringTeam)} ${coveringLine} covered.`;
+        ? `Tied. ${short(coveringTeam)} ${coveringLine} covered.`
+        : `${short(winner)} won by ${margin}. ${short(coveringTeam)} ${coveringLine} covered.`;
   }
 
   if (input.pickedSide === null) {
@@ -107,7 +112,7 @@ export function describeOutcome(input: OutcomeInput): GameOutcome {
       covered,
       score,
       line,
-      effect: `You had ${abbreviate(yourTeam)}. A push scores 0, with no penalty for the lock.`,
+      effect: `You had ${short(yourTeam)}. A push scores 0, with no penalty for the lock.`,
       verdict: "push",
     };
   }
@@ -118,7 +123,7 @@ export function describeOutcome(input: OutcomeInput): GameOutcome {
       covered,
       score,
       line,
-      effect: `You had ${abbreviate(yourTeam)}${input.isLock ? " as your lock" : ""}. +${scored} point${scored === 1 ? "" : "s"}.`,
+      effect: `You had ${short(yourTeam)}${input.isLock ? " as your lock" : ""}. +${scored} point${scored === 1 ? "" : "s"}.`,
       verdict: "win",
     };
   }
@@ -127,7 +132,7 @@ export function describeOutcome(input: OutcomeInput): GameOutcome {
     covered,
     score,
     line,
-    effect: `You had ${abbreviate(yourTeam)}${input.isLock ? " as your lock" : ""}. No points.`,
+    effect: `You had ${short(yourTeam)}${input.isLock ? " as your lock" : ""}. No points.`,
     verdict: "loss",
   };
 }
