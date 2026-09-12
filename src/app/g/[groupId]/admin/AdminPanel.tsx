@@ -32,6 +32,7 @@ import {
   setAdminAction,
   savePollAction,
   setWeekClosedAction,
+  syncScoresAction,
   syncOddsAction,
 } from "./actions";
 
@@ -93,8 +94,8 @@ export function AdminPanel(props: Props) {
         <WeekStatusSection groupId={group.id} weeks={weeks} />
       </Section>
 
-      <Section title="Odds feed">
-        <OddsSection groupId={group.id} />
+      <Section title="Update a week">
+        <UpdateSection groupId={group.id} weeks={weeks} quota={quota} />
       </Section>
 
       <Section title="Games">
@@ -505,19 +506,89 @@ function TotalsPullSection({
   );
 }
 
-function OddsSection({ groupId }: { groupId: string }) {
-  const [state, action] = useFormState(syncOddsAction, IDLE);
-  return (
-    <form action={action} className="space-y-3">
-      <input type="hidden" name="groupId" value={groupId} />
-      <Feedback state={state} />
+/**
+ * Pull scores, or refresh spreads, for one named week.
+ *
+ * The old single button did both for every open week at once, which is the
+ * wrong shape for the thing people actually want: a score that has not landed
+ * yet, in the game they are watching. Each button here spends one call against
+ * the monthly allowance, on the week you chose and nothing else.
+ */
+function UpdateSection({
+  groupId,
+  weeks,
+  quota,
+}: {
+  groupId: string;
+  weeks: Week[];
+  quota: Props["quota"];
+}) {
+  const [scoreState, pullScores] = useFormState(syncScoresAction, IDLE);
+  const [oddsState, pullOdds] = useFormState(syncOddsAction, IDLE);
+
+  // Only a week that is open can receive anything, so only those are offered.
+  const open = weeks.filter((week) => week.opened_at && !week.closed_at);
+  const [weekId, setWeekId] = useState(() => open.at(-1)?.id ?? "");
+
+  if (open.length === 0) {
+    return (
       <p className="text-sm text-muted">
-        Cron refreshes spreads and scores on its own. Use this to pull immediately.
+        No week is open. Pull a week&apos;s games above, and this is where you
+        chase its scores afterwards.
       </p>
-      <SubmitButton className="btn" pendingLabel="Refreshing...">
-        Refresh odds and scores now
-      </SubmitButton>
-    </form>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <Feedback state={scoreState} />
+      <Feedback state={oddsState} />
+      <p className="text-sm text-muted">
+        Scores update on their own every half hour while games are on. These are
+        for when you would rather not wait, or a line moved and you want it now.
+        Each button spends one call.
+      </p>
+
+      <div>
+        <label className="label">Week</label>
+        <select
+          value={weekId}
+          onChange={(event) => setWeekId(event.target.value)}
+          className="field"
+        >
+          {[...open].reverse().map((week) => (
+            <option key={week.id} value={week.id}>
+              {sportLabel(week.sport)} · {weekChoiceLabel(week)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <form action={pullScores}>
+          <input type="hidden" name="groupId" value={groupId} />
+          <input type="hidden" name="weekId" value={weekId} />
+          <SubmitButton className="btn-primary" pendingLabel="Pulling...">
+            Pull scores
+          </SubmitButton>
+        </form>
+
+        <form action={pullOdds}>
+          <input type="hidden" name="groupId" value={groupId} />
+          <input type="hidden" name="weekId" value={weekId} />
+          <SubmitButton className="btn" pendingLabel="Updating...">
+            Update odds
+          </SubmitButton>
+        </form>
+      </div>
+
+      <QuotaLine quota={quota} />
+      <p className="text-xs text-muted">
+        Pull scores also freezes any line whose kickoff has passed and regrades
+        what resolved. Update odds moves loose spreads and brings flexed kickoffs
+        current; a locked line keeps its number.
+      </p>
+    </div>
   );
 }
 

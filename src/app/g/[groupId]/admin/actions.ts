@@ -8,7 +8,7 @@ import { pullLinesWithClaude } from "@/lib/claude-odds";
 import { fetchPollFromWeb } from "@/lib/poll-source";
 import { parsePastedPoll } from "@/lib/rankings";
 import { pullLinesFromFeed, pullTotalsFromFeed, type Quota } from "@/lib/odds";
-import { runRefresh, summarize } from "@/lib/refresh";
+import { runRefresh } from "@/lib/refresh";
 import {
   AppError,
   addPointAdjustment,
@@ -794,33 +794,116 @@ export async function setTotalAction(
 
 // --------------------------------------------------------------------- odds
 
+/**
+ * Refreshes the spreads on one week's games, from the odds feed.
+ *
+ * A locked line keeps its number -- that is what locking means -- but its
+ * kickoff is still brought current, because a flexed game freezes picks at the
+ * old time. One call against the monthly allowance.
+ */
 export async function syncOddsAction(
   _previous: AdminState,
   form: FormData,
 ): Promise<AdminState> {
   const groupId = text(form, "groupId");
+  const weekId = text(form, "weekId");
 
-  return run(groupId, async () => {
-    const result = await runRefresh();
-    const summary = summarize(result);
+  return run(groupId, async (actor) => {
+    const week = await requireOpenWeek(weekId);
+    const result = await runRefresh("odds", week.sport, week.id);
 
     if (result.databaseError) {
       throw new AppError(`The database call failed: ${result.databaseError}`);
     }
-
-    // Only a failed spreads pull is worth calling a failure. Scores are a
-    // separate endpoint with its own plan restrictions, and a pool that has its
-    // lines can still be picked and can still be scored by hand.
     if (result.oddsError) {
       throw new AppError(`Couldn't fetch spreads: ${result.oddsError}`);
     }
+
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: "sync_odds",
+      note: `Spreads refreshed for ${sportLabel(week.sport)} ${week.label}.`,
+      details: {
+        week: week.label,
+        spreadsUpdated: result.spreadsUpdated,
+        gamesInserted: result.gamesInserted,
+        frozen: result.frozen,
+      },
+    });
+
+    return (
+      `${sportLabel(week.sport)} ${week.label}: ${result.spreadsUpdated} spread` +
+      `${result.spreadsUpdated === 1 ? "" : "s"} updated` +
+      `${result.gamesInserted > 0 ? `, ${result.gamesInserted} new games` : ""}` +
+      `${result.frozen ? `, ${result.frozen} lines frozen at kickoff` : ""}.` +
+      " A locked line keeps its number; only a pull replaces it."
+    );
+  });
+}
+
+/**
+ * Fetches scores for one week and regrades what resolved. One call against the
+ * monthly allowance, and the button exists so a lagging score can be chased
+ * without waiting for the half-hourly run.
+ */
+export async function syncScoresAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const weekId = text(form, "weekId");
+
+  return run(groupId, async (actor) => {
+    const week = await requireOpenWeek(weekId);
+    const result = await runRefresh("scores", week.sport, week.id);
+
+    if (result.databaseError) {
+      throw new AppError(`The database call failed: ${result.databaseError}`);
+    }
     if (result.scoresError) {
-      return (
-        `${summary} Spreads are current. Scores were unavailable ` +
-        `(${result.scoresError}), so results may lag -- you can enter a final ` +
-        `score by hand under Games.`
+      throw new AppError(
+        `Couldn't fetch scores: ${result.scoresError}. You can still enter a final ` +
+          "by hand on the Games page.",
       );
     }
-    return summary;
+
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: "sync_scores",
+      note: `Scores pulled for ${sportLabel(week.sport)} ${week.label}.`,
+      details: {
+        week: week.label,
+        scoresUpdated: result.scoresUpdated,
+        graded: result.graded,
+        frozen: result.frozen,
+      },
+    });
+
+    return (
+      `${sportLabel(week.sport)} ${week.label}: ${result.scoresUpdated} score` +
+      `${result.scoresUpdated === 1 ? "" : "s"} updated, ` +
+      `${result.graded ?? 0} pick${result.graded === 1 ? "" : "s"} graded` +
+      `${result.frozen ? `, ${result.frozen} lines frozen at kickoff` : ""}.`
+    );
   });
+}
+
+/** Both buttons need the same thing: a week that exists and is still open. */
+async function requireOpenWeek(weekId: string) {
+  if (!weekId) throw new AppError("Pick a week.");
+  const week = await getWeek(weekId);
+  if (!week) throw new AppError("That week no longer exists.");
+  if (week.closed_at) {
+    throw new AppError(
+      `${week.label} is closed, so nothing lands in it. Reopen it under Week status first.`,
+    );
+  }
+  if (!week.opened_at) {
+    throw new AppError(`${week.label} has no games yet. Pull its games first.`);
+  }
+  return week;
 }

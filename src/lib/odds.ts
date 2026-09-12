@@ -151,7 +151,10 @@ export async function probeOddsFeed(): Promise<{
  * A failed fetch is reported, not thrown: the stored spreads stay exactly as
  * they were, so members keep seeing the last known line instead of an error.
  */
-export async function refreshOdds(sport: Sport = "nfl"): Promise<SyncResult> {
+export async function refreshOdds(
+  sport: Sport = "nfl",
+  onlyWeekIds: string[] | null = null,
+): Promise<SyncResult> {
   const result: SyncResult = {
     ok: true,
     gamesSeen: 0,
@@ -209,7 +212,11 @@ export async function refreshOdds(sport: Sport = "nfl"): Promise<SyncResult> {
   // Only weeks that have been deliberately pulled, and are not yet closed,
   // may receive anything. This is what keeps next week's lines from appearing
   // before you pull them, and what keeps a finished week finished.
-  const live = (await listOpenedWeeks(sport)).filter((week) => week.closed_at === null);
+  // A closed week is a finished snapshot and never receives anything. Beyond
+  // that, a targeted run touches only the week it was asked for.
+  const live = (await listOpenedWeeks(sport))
+    .filter((week) => week.closed_at === null)
+    .filter((week) => onlyWeekIds === null || onlyWeekIds.includes(week.id));
   const liveWeekIds = new Map(
     live.map((week) => [`${week.season_year}-${week.week_number}`, week.id]),
   );
@@ -331,6 +338,7 @@ export async function refreshOdds(sport: Sport = "nfl"): Promise<SyncResult> {
 export async function refreshScores(
   daysFrom: number | null = null,
   sport: Sport = "nfl",
+  onlyWeekIds: string[] | null = null,
 ): Promise<SyncResult> {
   const result: SyncResult = {
     ok: true,
@@ -368,6 +376,7 @@ export async function refreshScores(
   // A closed week is a finished snapshot, so scores stop landing in it too.
   const liveWeeks = (await listOpenedWeeks(sport))
     .filter((week) => week.closed_at === null)
+    .filter((week) => onlyWeekIds === null || onlyWeekIds.includes(week.id))
     .map((week) => week.id);
   if (liveWeeks.length === 0) return result;
 

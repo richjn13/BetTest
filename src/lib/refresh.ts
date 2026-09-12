@@ -39,11 +39,18 @@ export type RefreshResult = {
  * kickoff and the next run. On a 15-minute schedule that window is minutes
  * wide. On a weekly schedule it is a week wide.
  */
-export type RefreshMode = "full" | "scores";
+export type RefreshMode = "full" | "scores" | "odds";
 
+/**
+ * @param weekId Restricts the run to one week, for a button that says which
+ *   week it is pulling. A targeted run also skips the "is anything actually
+ *   waiting on a score" shortcut: somebody pressed the button on purpose, and
+ *   the usual reason is a game the shortcut decided was not worth asking about.
+ */
 export async function runRefresh(
   mode: RefreshMode = "full",
   sport: Sport = "nfl",
+  weekId: string | null = null,
 ): Promise<RefreshResult> {
   const result: RefreshResult = {
     ok: true,
@@ -74,8 +81,8 @@ export async function runRefresh(
   // mode, which exists so a frequent schedule costs one API call instead of
   // two -- spreads barely move once a week is pulled and locked, but scores
   // change every few minutes while games are on.
-  if (mode === "full") {
-    const odds = await refreshOdds(sport);
+  if (mode === "full" || mode === "odds") {
+    const odds = await refreshOdds(sport, weekId ? [weekId] : null);
     result.gamesInserted = odds.gamesInserted;
     result.gamesAdopted = odds.gamesAdopted ?? 0;
     result.spreadsUpdated = odds.spreadsUpdated;
@@ -89,6 +96,17 @@ export async function runRefresh(
   // scheduled run outside game time, or after every game has gone final,
   // otherwise spends an API call to be told nothing changed. Checking the
   // database first is free; the call is not.
+  if (mode === "odds") {
+    try {
+      result.graded = await gradeResolvedGames();
+    } catch (error) {
+      result.databaseError = describe(error);
+      console.error("refresh: grading failed", error);
+    }
+    result.ok = result.degraded.length === 0 && result.databaseError === null;
+    return result;
+  }
+
   let pending: PendingScores = { count: 1, weekLabel: null, daysBack: 0 };
   try {
     pending = await pendingScores(new Date(), sport);
@@ -96,6 +114,8 @@ export async function runRefresh(
     // If the check fails, fetch rather than silently skip.
     console.error("refresh: could not check for pending scores", error);
   }
+  // Asked for by hand, for one week: make the call regardless.
+  if (weekId) pending = { ...pending, count: Math.max(1, pending.count) };
 
   result.waitingOn = pending.weekLabel;
 
@@ -106,6 +126,7 @@ export async function runRefresh(
     const scores = await refreshScores(
       pending.daysBack >= 1 ? pending.daysBack + 1 : null,
       sport,
+      weekId ? [weekId] : null,
     );
     result.scoresUpdated = scores.scoresUpdated;
     if (scores.error) {
@@ -187,17 +208,6 @@ async function pendingScores(
     weekLabel: labels.get(rows[0].week_id) ?? null,
     daysBack: Math.max(0, daysBack),
   };
-}
-
-/** A one-line summary for the admin panel. */
-export function summarize(result: RefreshResult): string {
-  return (
-    `${result.gamesInserted} new games, ` +
-    (result.gamesAdopted > 0 ? `${result.gamesAdopted} linked to the feed, ` : "") +
-    `${result.spreadsUpdated} spreads, ` +
-    `${result.scoresUpdated} scores, ${result.frozen ?? 0} lines frozen, ` +
-    `${result.graded ?? 0} picks graded.`
-  );
 }
 
 function describe(error: unknown): string {

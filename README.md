@@ -542,6 +542,12 @@ Three things keep that from becoming a surprise:
   week's lines. It says so in the workflow log rather than failing.
 - Each pull box on the admin page prints the balance before you spend it.
 
+**To chase one week by hand**, use Admin → Update a week. Pick the week, then
+**Pull scores** or **Update odds**. Each spends one call, on that week alone.
+Pull scores also freezes any line whose kickoff has passed and regrades what
+resolved; Update odds moves loose spreads and brings a flexed kickoff current,
+while a locked line keeps its number.
+
 To update more often, change every `*/30` in that workflow. `*/15` doubles the
 calls and needs watching on the free tier; `*/5` is six times them and needs a
 paid Odds API plan, where the $30 tier covers it many times over.
