@@ -66,10 +66,20 @@ jobs:
           # --location matters: Vercel redirects http to https, and a
           # non-canonical domain to the canonical one, with a 308. Without this
           # every run failed on the redirect without ever reaching the app.
-          read -r status effective < <(curl --silent --show-error --location --max-time 120 \
+          #
+          # Captured into one variable and split by hand. `read` from a process
+          # substitution returns non-zero on the last line when it has no
+          # trailing newline, and under `set -e` that killed the step before it
+          # could print anything.
+          if ! summary=$(curl --silent --show-error --location --max-time 120 \
             --output "$response" --write-out '%{http_code} %{url_effective}' \
             --header "Authorization: Bearer $CRON_SECRET" \
-            "$APP_URL/api/cron/scores")
+            "$APP_URL/api/cron/scores"); then
+            echo "::error::curl could not reach the app at all. Check APP_URL."
+            exit 1
+          fi
+          status="${summary%% *}"
+          effective="${summary##* }"
 
           echo "HTTP $status  ->  $effective"
           cat "$response"
