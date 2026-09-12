@@ -53,10 +53,15 @@ export function isSport(value: unknown): value is Sport {
   return typeof value === "string" && (SPORTS as readonly string[]).includes(value);
 }
 
+/**
+ * Falls back to the NFL rather than returning undefined. A row written before
+ * a column existed, or a value from an older deployment, would otherwise take
+ * a page down on a property read of nothing.
+ */
 export function sportConfig(sport: Sport): SportConfig {
-  return SPORT_CONFIG[sport];
+  return SPORT_CONFIG[sport] ?? SPORT_CONFIG.nfl;
 }
 
 export function sportLabel(sport: Sport): string {
-  return SPORT_CONFIG[sport].label;
+  return sportConfig(sport).label;
 }

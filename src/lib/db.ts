@@ -28,6 +28,20 @@ export function unwrap<T = unknown>(result: {
   data: unknown;
   error: { message: string } | null;
 }): T {
-  if (result.error) throw new Error(result.error.message);
+  if (result.error) throw new Error(explain(result.error.message));
   return result.data as T;
+}
+
+/**
+ * A query for a column the database does not have means a migration was never
+ * run. Postgres says so in its own terms -- "column games.total_points does not
+ * exist" -- which is accurate and tells the reader nothing about what to do.
+ * The app then fails on every page at once, because every page reads games.
+ */
+export function explain(message: string): string {
+  if (!/does not exist/i.test(message) || !/column/i.test(message)) return message;
+  return (
+    `${message}. The database is missing a column the app needs, which means a ` +
+    "migration in supabase/migrations/ was never run. Open /setup: it names the file."
+  );
 }

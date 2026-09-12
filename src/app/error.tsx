@@ -25,21 +25,28 @@ export default function Error({
         it, and nothing was saved.
       </p>
       <p className="mt-2 text-muted">
-        Otherwise, on a new deployment this is almost always a missing or
-        mistyped environment variable.
+        Otherwise the two usual causes are a database migration that was never
+        run, and a missing or mistyped environment variable. The setup check
+        finds both and names the file or the variable.
       </p>
 
+      {error.message && (
+        <p className="mt-3 break-words rounded-lg border border-edge px-3 py-2 font-mono text-xs text-muted">
+          {error.message}
+        </p>
+      )}
+
       <div className="mt-6 flex flex-wrap gap-3">
+        <Link href="/setup" className="btn-primary">
+          Run the setup check
+        </Link>
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="btn-primary"
+          className="btn"
         >
           Reload the page
         </button>
-        <Link href="/setup" className="btn">
-          Run the setup check
-        </Link>
         <button type="button" onClick={reset} className="btn">
           Try again
         </button>

@@ -24,6 +24,40 @@ const TABLES = [
   "admin_actions",
 ];
 
+/**
+ * What each migration after the first one adds, and so what its absence breaks.
+ *
+ * Every page reads these columns by name. A migration that was never run does
+ * not announce itself: the tables are all there, the deployment is healthy, and
+ * every page throws "Something broke" on a query for a column that does not
+ * exist. This is the check that names the file to run.
+ */
+const SCHEMA: { table: string; columns: string[]; migration: string }[] = [
+  { table: "games", columns: ["spread_locked_at"], migration: "0002_locked_lines.sql" },
+  { table: "weeks", columns: ["opened_at", "closed_at"], migration: "0004_week_snapshots.sql" },
+  {
+    table: "users",
+    columns: ["display_name", "email", "avatar_url"],
+    migration: "0005_profiles.sql",
+  },
+  {
+    table: "games",
+    columns: ["kickoff_changed_at", "last_seen_in_feed_at"],
+    migration: "0006_schedule_changes.sql",
+  },
+  {
+    table: "weeks",
+    columns: ["sport"],
+    migration: "0007_sports_and_totals.sql",
+  },
+  {
+    table: "games",
+    columns: ["home_rank", "away_rank", "total_points", "frozen_total", "totals_enabled"],
+    migration: "0007_sports_and_totals.sql",
+  },
+  { table: "picks", columns: ["market"], migration: "0007_sports_and_totals.sql" },
+];
+
 function checkPresence(name: string, optional = false): Check {
   const raw = process.env[name];
   if (!raw) {
@@ -150,24 +184,56 @@ async function checkDatabase(): Promise<Check[]> {
     return [{ label: "Database", status: "fail", detail: describe(error) }];
   }
 
-  const checks: Check[] = [];
-  for (const table of TABLES) {
-    try {
-      const { error } = await client.from(table).select("id", { head: true, count: "exact" });
-      if (error) {
-        checks.push({
-          label: `Table ${table}`,
-          status: "fail",
-          detail: error.message,
-        });
-      } else {
-        checks.push({ label: `Table ${table}`, status: "ok", detail: "Present." });
+  // Every check is one head request and none depends on another, so they go
+  // out together. In series this page took a noticeable moment to answer.
+  const tables = await Promise.all(
+    TABLES.map(async (table): Promise<Check> => {
+      try {
+        const { error } = await client.from(table).select("id", { head: true, count: "exact" });
+        return error
+          ? { label: `Table ${table}`, status: "fail", detail: error.message }
+          : { label: `Table ${table}`, status: "ok", detail: "Present." };
+      } catch (error) {
+        return { label: `Table ${table}`, status: "fail", detail: describe(error) };
       }
-    } catch (error) {
-      checks.push({ label: `Table ${table}`, status: "fail", detail: describe(error) });
-    }
-  }
-  return checks;
+    }),
+  );
+
+  // No point asking about columns on a table that is not there.
+  const missingTables = new Set(
+    tables.filter((check) => check.status === "fail").map((check) => check.label.slice(6)),
+  );
+
+  const schema = await Promise.all(
+    SCHEMA.map(async (step): Promise<Check> => {
+      const label = `Migration ${step.migration.slice(0, 4)} (${step.table})`;
+      if (missingTables.has(step.table)) {
+        return {
+          label,
+          status: "fail",
+          detail: `Not checked: the ${step.table} table is missing.`,
+        };
+      }
+      try {
+        const { error } = await client
+          .from(step.table)
+          .select(step.columns.join(", "), { head: true });
+        return error
+          ? {
+              label,
+              status: "fail",
+              detail:
+                `${error.message}. Run supabase/migrations/${step.migration} in the ` +
+                "Supabase SQL editor. Until you do, every page will fail.",
+            }
+          : { label, status: "ok", detail: `${step.table} has what ${step.migration} adds.` };
+      } catch (error) {
+        return { label, status: "fail", detail: describe(error) };
+      }
+    }),
+  );
+
+  return [...tables, ...schema];
 }
 
 /**
@@ -333,6 +399,12 @@ export default async function SetupPage() {
   const all = [...config, ...database, ...oddsFeed];
   const failing = all.filter((check) => check.status === "fail").length;
 
+  // A missing migration is the one failure that takes every page down at once,
+  // so it gets said first and plainly rather than sitting in a list.
+  const behind = database.filter(
+    (check) => check.status === "fail" && check.label.startsWith("Migration"),
+  );
+
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-10">
       <h1 className="text-2xl font-bold tracking-tight">Setup check</h1>
@@ -351,6 +423,26 @@ export default async function SetupPage() {
           ? "Everything checks out. If the app is still failing, the cause is not configuration."
           : `${failing} problem${failing === 1 ? "" : "s"} below. Fix each one in Vercel under Settings, Environment Variables, then redeploy from the Deployments tab.`}
       </p>
+
+      {behind.length > 0 && (
+        <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm">
+          <p className="font-semibold text-red-500">The database is behind the app.</p>
+          <p className="mt-1 text-muted">
+            The app reads columns your database does not have, so every page
+            fails. Open each file below in{" "}
+            <span className="font-mono">supabase/migrations/</span> on GitHub,
+            copy it, and run it in the Supabase SQL editor, in order. Running one
+            twice is safe.
+          </p>
+          <ul className="mt-2 list-disc pl-5 font-mono text-xs text-muted">
+            {[...new Set(behind.map((check) => check.detail.match(/migrations\/(\S+)/)?.[1]))]
+              .filter(Boolean)
+              .map((file) => (
+                <li key={file}>{file}</li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       <h2 className="mt-8 text-sm font-semibold uppercase tracking-wide text-muted">
         Configuration
@@ -380,10 +472,11 @@ export default async function SetupPage() {
       </ul>
 
       <p className="mt-6 text-xs text-muted">
-        A missing table means the schema script did not finish. Run
-        supabase/migrations/0001_init.sql again in the Supabase SQL editor; it is
-        safe to run twice. A rejected odds key usually means it was set in Vercel
-        without redeploying afterwards.
+        A missing table means the schema script did not finish: run
+        supabase/migrations/0001_init.sql again in the Supabase SQL editor. A
+        missing migration means that file was never run: run it now, in order.
+        Both are safe to run twice. A rejected odds key usually means it was set
+        in Vercel without redeploying afterwards.
       </p>
     </main>
   );

@@ -372,40 +372,89 @@ export async function refreshScores(
     .map((week) => week.id);
   if (liveWeeks.length === 0) return result;
 
+  // The scores feed answers with every game the league is playing, which for
+  // college is well over fifty. Writing blindly meant two database round trips
+  // per event whether or not we had the game, so a single college run made
+  // hundreds of calls and could outlast the function's time limit. Reading the
+  // week's games once, up front, turns that into one query plus a write for
+  // the games that actually changed.
+  type Row = {
+    id: string;
+    odds_api_event_id: string | null;
+    kickoff_time: string;
+    final_home_score: number | null;
+    final_away_score: number | null;
+    status: string;
+    spread_frozen_at: string | null;
+    score_overridden_at: string | null;
+  };
+
+  const ours = new Map<string, Row>();
+  for (const row of unwrap<Row[]>(
+    await db()
+      .from("games")
+      .select(
+        "id, odds_api_event_id, kickoff_time, final_home_score, final_away_score, " +
+          "status, spread_frozen_at, score_overridden_at",
+      )
+      .in("week_id", liveWeeks)
+      .not("odds_api_event_id", "is", null),
+  ) ?? []) {
+    if (row.odds_api_event_id) ours.set(row.odds_api_event_id, row);
+  }
+
   for (const event of events) {
+    const game = ours.get(event.id);
+    if (!game) continue;
     result.gamesSeen += 1;
 
     // Every scores response carries commence_time, so keeping kickoffs current
     // costs nothing extra. This is what catches a flexed game between line
     // pulls, and it matters because the stored kickoff is what freezes picks.
     const kickoff = new Date(event.commence_time);
-    if (!Number.isNaN(kickoff.getTime())) {
-      const stamp = new Date().toISOString();
+    if (
+      !Number.isNaN(kickoff.getTime()) &&
+      game.spread_frozen_at === null &&
+      game.kickoff_time !== kickoff.toISOString()
+    ) {
       const moved = await db()
         .from("games")
-        .update({ kickoff_time: kickoff.toISOString(), kickoff_changed_at: stamp })
-        .eq("odds_api_event_id", event.id)
-        .in("week_id", liveWeeks)
+        .update({
+          kickoff_time: kickoff.toISOString(),
+          kickoff_changed_at: new Date().toISOString(),
+        })
+        .eq("id", game.id)
         .is("spread_frozen_at", null)
-        .neq("kickoff_time", kickoff.toISOString())
         .select("id");
       if (!moved.error && moved.data && moved.data.length > 0) {
         result.kickoffsMoved = (result.kickoffsMoved ?? 0) + 1;
       }
     }
 
+    if (game.score_overridden_at) continue;
+
     const parsed = extractScores(event);
     if (!parsed) continue;
+
+    // Nothing to write when the feed is repeating what we already stored,
+    // which is most of what a run every fifteen minutes sees.
+    const status = event.completed ? "final" : "live";
+    if (
+      game.final_home_score === parsed.home &&
+      game.final_away_score === parsed.away &&
+      game.status === status
+    ) {
+      continue;
+    }
 
     const update = await db()
       .from("games")
       .update({
         final_home_score: parsed.home,
         final_away_score: parsed.away,
-        status: event.completed ? "final" : "live",
+        status,
       })
-      .eq("odds_api_event_id", event.id)
-      .in("week_id", liveWeeks)
+      .eq("id", game.id)
       .is("score_overridden_at", null)
       .select("id");
     if (!update.error && update.data && update.data.length > 0) result.scoresUpdated += 1;
