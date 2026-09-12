@@ -58,17 +58,29 @@ jobs:
             exit 1
           fi
 
+          # A trailing slash in the secret makes //api/cron/scores, which Vercel
+          # answers with a redirect rather than the endpoint.
+          APP_URL="${APP_URL%/}"
+
           response=$(mktemp)
-          status=$(curl --silent --show-error --max-time 120 \
-            --output "$response" --write-out '%{http_code}' \
+          # --location matters: Vercel redirects http to https, and a
+          # non-canonical domain to the canonical one, with a 308. Without this
+          # every run failed on the redirect without ever reaching the app.
+          read -r status effective < <(curl --silent --show-error --location --max-time 120 \
+            --output "$response" --write-out '%{http_code} %{url_effective}' \
             --header "Authorization: Bearer $CRON_SECRET" \
             "$APP_URL/api/cron/scores")
 
-          echo "HTTP $status"
+          echo "HTTP $status  ->  $effective"
           cat "$response"
           echo
 
+          if [ "$status" = "401" ]; then
+            echo "::error::Unauthorized. Either CRON_SECRET does not match the value in Vercel, or APP_URL redirects to another host -- curl drops the Authorization header across hosts. Set APP_URL to $effective (without the path) and try again."
+            exit 1
+          fi
+
           if [ "$status" != "200" ]; then
-            echo "::error::Score refresh failed with HTTP $status"
+            echo "::error::Score refresh failed with HTTP $status at $effective"
             exit 1
           fi
