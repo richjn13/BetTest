@@ -430,6 +430,48 @@ export async function getCurrentWeek(sport?: Sport): Promise<Week | null> {
   return candidates.at(-1) ?? null;
 }
 
+// ------------------------------------------------------------- rate limit
+
+/**
+ * Takes the right to do something at most once every `everyMs`, across every
+ * request and every viewer.
+ *
+ * Returns true to exactly one caller per window. The claim is the update
+ * itself -- `where updated_at < cutoff` -- so two page loads landing in the
+ * same second cannot both win it, which is the whole point: without this, ten
+ * people opening the picks page during a game would mean ten API calls.
+ */
+export async function claimSlot(key: string, everyMs: number): Promise<boolean> {
+  const now = Date.now();
+  const cutoff = new Date(now - everyMs).toISOString();
+
+  // Make sure the row is there. A duplicate means another request just did it.
+  const seed = await db()
+    .from("app_state")
+    .insert({ key, updated_at: new Date(0).toISOString() })
+    .select("key");
+  if (seed.error && !isUniqueViolation(seed.error)) throw new Error(seed.error.message);
+
+  const claim = await db()
+    .from("app_state")
+    .update({ updated_at: new Date(now).toISOString() })
+    .eq("key", key)
+    .lt("updated_at", cutoff)
+    .select("key");
+  if (claim.error) throw new Error(claim.error.message);
+  return (claim.data?.length ?? 0) > 0;
+}
+
+/** When the named thing last ran, or null if it never has. */
+export async function slotLastRun(key: string): Promise<Date | null> {
+  const row = unwrap<{ updated_at: string } | null>(
+    await db().from("app_state").select("updated_at").eq("key", key).maybeSingle(),
+  );
+  if (!row) return null;
+  const at = new Date(row.updated_at);
+  return at.getTime() === 0 ? null : at;
+}
+
 // ------------------------------------------------------------------- poll
 
 /**

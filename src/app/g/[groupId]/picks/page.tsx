@@ -5,6 +5,7 @@ import {
   listPickableWeeks,
   sportsWithOpenWeeks,
 } from "@/lib/queries";
+import { refreshScoresIfStale } from "@/lib/live";
 import { isSport, sportLabel, type Sport } from "@/lib/sports";
 import { SportTabs, type Scope } from "./SportTabs";
 import { PicksBoard } from "./PicksBoard";
@@ -28,6 +29,11 @@ export default async function PicksPage({
   searchParams: { week?: string; sport?: string };
 }) {
   const { user } = await requireViewer(params.groupId);
+
+  // Bring scores current before rendering, if a game is under way and nobody
+  // has checked recently. Costs nothing when no game is live, and one call
+  // however many people are watching.
+  const live = await refreshScoresIfStale();
 
   const open = await sportsWithOpenWeeks();
   const sports = DISPLAY_ORDER.filter((sport) => open.includes(sport));
@@ -70,6 +76,7 @@ export default async function PicksPage({
     return (
       <div>
         <SportTabs sports={sports} current={scope} basePath={basePath} />
+        <ScoreClock live={live} />
 
         <div className="space-y-8">
           {boards.map((board, index) =>
@@ -139,6 +146,7 @@ export default async function PicksPage({
   return (
     <div>
       <SportTabs sports={sports} current={scope} basePath={basePath} />
+      <ScoreClock live={live} />
 
       <WeekTabs
         weeks={weeks}
@@ -169,5 +177,27 @@ export default async function PicksPage({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * When the scores were last brought current. Small, and only there while a
+ * game is actually on, so it reassures rather than clutters.
+ */
+function ScoreClock({ live }: { live: { ran: string[]; lastChecked: Date | null } }) {
+  if (live.lastChecked === null) return null;
+
+  const minutes = Math.floor((Date.now() - live.lastChecked.getTime()) / 60_000);
+  const when =
+    live.ran.length > 0 || minutes <= 0
+      ? "just now"
+      : minutes === 1
+        ? "a minute ago"
+        : `${minutes} minutes ago`;
+
+  return (
+    <p className="mb-3 text-xs text-muted">
+      Scores checked {when}. They refresh while you watch.
+    </p>
   );
 }

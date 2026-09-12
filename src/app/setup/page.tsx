@@ -27,6 +27,7 @@ const TABLES = [
 /** Tables added after the first release, named with the file that adds them. */
 const LATER_TABLES: { table: string; migration: string }[] = [
   { table: "ap_poll", migration: "0010_ap_poll.sql" },
+  { table: "app_state", migration: "0012_app_state.sql" },
 ];
 
 /**
@@ -213,7 +214,7 @@ async function checkDatabase(): Promise<Check[]> {
   const later = await Promise.all(
     LATER_TABLES.map(async (step): Promise<Check> => {
       try {
-        const { error } = await client.from(step.table).select("season_year", { head: true });
+        const { error } = await client.from(step.table).select("*", { head: true });
         return error
           ? {
               label: `Table ${step.table}`,

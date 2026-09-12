@@ -211,12 +211,12 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are eleven files to run, in order**, all in `supabase/migrations/`:
+**There are twelve files to run, in order**, all in `supabase/migrations/`:
 `0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`,
 `0004_week_snapshots.sql`, `0005_profiles.sql`, `0006_schedule_changes.sql`,
 `0007_sports_and_totals.sql`, `0008_totals_await_number.sql`,
-`0009_slate_choice.sql`, `0010_ap_poll.sql`, then
-`0011_drop_team_records.sql`. Do the first one now and come back for the others.
+`0009_slate_choice.sql`, `0010_ap_poll.sql`, `0011_drop_team_records.sql`,
+then `0012_app_state.sql`. Do the first one now and come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -251,8 +251,9 @@ adds college football and the over/under, and `0008_totals_await_number.sql`
 lets you turn an over/under on before its number has been pulled, and
 `0009_slate_choice.sql` lets you set a game aside without deleting it, and
 `0010_ap_poll.sql` stores the AP Top 25 so it is fetched once a week rather
-than on every pull. `0011_drop_team_records.sql` removes two columns that a
-previous version added; it does nothing if you never ran that version.
+than on every pull. `0011_drop_team_records.sql` removes two columns that a previous version
+added, doing nothing if you never ran it, and `0012_app_state.sql` adds the
+small table that keeps score checks from being made twice over.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.
@@ -563,9 +564,18 @@ row shows its number and the combined score next to it.
 
 ### Score updates, and what they cost
 
-Scores update on their own, every half hour while games are on, driven by a
-GitHub Actions workflow that calls the app. There is no Claude involvement and
-no token cost. It is a look at the odds feed and nothing more.
+Scores update two ways, and neither involves Claude or costs a token.
+
+**While anyone is watching, the page brings them current itself.** Opening the
+picks page checks the scores when a game has kicked off and has no final score
+yet, and when nobody has checked in the last ten minutes. The interval is
+claimed in the database, so ten people watching at once still spend one call,
+and nobody watching spends none at all. The page says when it last looked.
+
+**A GitHub Actions workflow also calls in every half hour** during game
+windows, which covers the times nobody has the app open. Treat it as a backstop
+rather than the mechanism: GitHub's scheduler is best-effort and drops runs
+under load -- three were due in one hour here and one arrived.
 
 **The cost is odds-feed calls.** Each run that finds a game waiting on a score
 spends one call per sport. The windows in `.github/workflows/scores.yml` come

@@ -171,7 +171,7 @@ export type PendingScores = {
  * A game stuck unresolved for longer than a week is an admin problem, not a
  * feed problem, and stops counting so it cannot spend calls forever.
  */
-async function pendingScores(
+export async function pendingScores(
   now: Date = new Date(),
   sport?: Sport,
 ): Promise<PendingScores> {
