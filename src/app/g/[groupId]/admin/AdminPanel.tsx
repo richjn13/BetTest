@@ -20,7 +20,7 @@ import type {
   Week,
 } from "@/lib/types";
 import { IDLE } from "./state";
-import { Feedback, NoteField, Section } from "./ui";
+import { Feedback, NoteField, SectionStack, type Panel } from "./ui";
 import {
   adjustPointsAction,
   editPickAction,
@@ -61,82 +61,135 @@ export function AdminPanel(props: Props) {
   const { viewerId, group, members, weeks, week, games, picks, actions, adjustments, quota, poll } =
     props;
 
-  return (
-    <div className="space-y-4">
-      <Section title="Group">
-        <GroupSection group={group} />
-      </Section>
+  const openWeeks = weeks.filter((entry) => entry.opened_at && !entry.closed_at);
+  const flagged = games.filter((game) => game.totals_enabled).length;
+  const remaining = quota?.remaining ?? null;
 
-      <Section title="Invite someone">
-        {/* Keyed by the code so regenerating it rewrites the message. */}
-        <InviteMessage
-          key={group.join_code}
-          groupName={group.name}
-          joinCode={group.join_code}
-        />
-      </Section>
-
-      {SPORTS.map((sport) => (
-        <Section key={sport} title={`Pull ${sportLabel(sport)}`}>
-          <GamesPullSection groupId={group.id} sport={sport} weeks={weeks} quota={quota} />
-          {sport === "ncaaf" && <RankingsSection groupId={group.id} weeks={weeks} poll={poll} />}
-          <TotalsPullSection
-            groupId={group.id}
-            sport={sport}
-            weeks={weeks}
-            week={week}
-            games={games}
-          />
-        </Section>
-      ))}
-
-      <Section title="Week status">
-        <WeekStatusSection groupId={group.id} weeks={weeks} />
-      </Section>
-
-      <Section title="Update a week">
-        <UpdateSection groupId={group.id} weeks={weeks} quota={quota} />
-      </Section>
-
-      <Section title="Games">
-        <p className="text-sm text-muted">
-          The slate, scores, kickoff times and over/unders live on their own
-          page. They change constantly during a week, and every change reloads
-          the page they sit on, which is no way to share a page with buttons
-          that spend money.
-        </p>
-        <Link href={`/g/${group.id}/admin/games`} className="btn-primary mt-3 inline-block">
-          Open the games page
-        </Link>
-      </Section>
-
-      <Section
-        title="Picks"
-        aside={
-          weeks.length > 0 && week ? (
-            <WeekPicker groupId={group.id} weeks={weeks} week={week} />
-          ) : null
-        }
-      >
-        <PicksSection groupId={group.id} members={members} games={games} picks={picks} />
-      </Section>
-
-      <Section title="Points adjustments">
+  const panels: Panel[] = [
+    {
+      id: "update",
+      title: "Update a week",
+      hint:
+        openWeeks.length === 0
+          ? "No week open"
+          : `Pull scores or odds · ${openWeeks.length} week${openWeeks.length === 1 ? "" : "s"} open`,
+      body: <UpdateSection groupId={group.id} weeks={weeks} quota={quota} />,
+    },
+    ...SPORTS.map((sport): Panel => {
+      const latest = weeks.filter((entry) => entry.sport === sport).at(-1) ?? null;
+      return {
+        id: `pull-${sport}`,
+        title: `Pull ${sportLabel(sport)}`,
+        hint: [
+          latest ? `Last pulled ${latest.label}` : "Nothing pulled yet",
+          remaining === null ? null : `${remaining} calls left`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        body: (
+          <>
+            <GamesPullSection groupId={group.id} sport={sport} weeks={weeks} quota={quota} />
+            {sport === "ncaaf" && (
+              <RankingsSection groupId={group.id} weeks={weeks} poll={poll} />
+            )}
+            <TotalsPullSection
+              groupId={group.id}
+              sport={sport}
+              weeks={weeks}
+              week={week}
+              games={games}
+            />
+          </>
+        ),
+      };
+    }),
+    {
+      id: "weeks",
+      title: "Week status",
+      hint: `${openWeeks.length} open · ${weeks.filter((entry) => entry.closed_at).length} closed`,
+      body: <WeekStatusSection groupId={group.id} weeks={weeks} />,
+    },
+    {
+      id: "picks",
+      title: "Picks",
+      hint: week
+        ? `Corrections · ${sportLabel(week.sport)} ${week.label}, ${picks.length} picks`
+        : "Corrections",
+      aside:
+        weeks.length > 0 && week ? (
+          <WeekPicker groupId={group.id} weeks={weeks} week={week} />
+        ) : null,
+      body: <PicksSection groupId={group.id} members={members} games={games} picks={picks} />,
+    },
+    {
+      id: "adjustments",
+      title: "Points adjustments",
+      hint: adjustments.length === 0 ? "None made" : `${adjustments.length} made`,
+      body: (
         <AdjustmentsSection
           groupId={group.id}
           members={members}
           weeks={weeks}
           adjustments={adjustments}
         />
-      </Section>
+      ),
+    },
+    {
+      id: "invite",
+      title: "Invite someone",
+      hint: `Join code ${group.join_code}`,
+      body: (
+        // Keyed by the code so regenerating it rewrites the message.
+        <InviteMessage
+          key={group.join_code}
+          groupName={group.name}
+          joinCode={group.join_code}
+        />
+      ),
+    },
+    {
+      id: "members",
+      title: "Members",
+      hint: `${members.length} in the pool · ${members.filter((member) => member.is_admin).length} admin`,
+      body: <MembersSection groupId={group.id} members={members} viewerId={viewerId} />,
+    },
+    {
+      id: "group",
+      title: "Join code",
+      hint: "Regenerate, which stops the old one working",
+      body: <GroupSection group={group} />,
+    },
+    {
+      id: "log",
+      title: "Audit log",
+      hint: `${actions.length} recent action${actions.length === 1 ? "" : "s"}`,
+      body: <AuditSection actions={actions} />,
+    },
+  ];
 
-      <Section title="Members">
-        <MembersSection groupId={group.id} members={members} viewerId={viewerId} />
-      </Section>
+  return (
+    <div className="space-y-4">
+      {/* The games page is where a week is actually run, so it is a door at
+          the top rather than a drawer among ten others. */}
+      <Link
+        href={`/g/${group.id}/admin/games`}
+        className="card flex items-center justify-between gap-3 px-4 py-3"
+      >
+        <span className="min-w-0">
+          <span className="block font-semibold">Games</span>
+          <span className="block truncate text-xs text-muted">
+            {week
+              ? `${sportLabel(week.sport)} ${week.label} · ${games.length} games` +
+                (flagged > 0 ? ` · ${flagged} with an over/under` : "")
+              : "Scores, kickoffs, over/unders, the slate"}
+          </span>
+        </span>
+        <span aria-hidden className="shrink-0 text-muted">
+          &rarr;
+        </span>
+      </Link>
 
-      <Section title="Audit log">
-        <AuditSection actions={actions} />
-      </Section>
+      <SectionStack panels={panels} storageKey={`pickem:admin:${group.id}`} />
     </div>
   );
 }

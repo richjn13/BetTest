@@ -441,6 +441,18 @@ If it reports a problem instead, the message names the cause. Nothing is damaged
 either way: a failed fetch changes no stored data, so whatever spreads you
 already had stay exactly as they were.
 
+### The admin page
+
+Everything is closed until you open it. Each header carries one line of its own
+state -- "3 weeks open", "Join code 7KQ2M", "471 calls left" -- so a closed page
+still tells you where things stand, and opening one drawer leaves the others
+alone. Games sits at the top as a link rather than a drawer, because that is
+where a week is actually run.
+
+**Arrange**, at the top right, puts a pair of arrows on every header so you can
+put the ones you use first. The order and which drawers you left open are
+remembered in that browser, per pool. Reset order puts it back.
+
 ### Two admin pages
 
 The admin area is split in two, and the split matters.
