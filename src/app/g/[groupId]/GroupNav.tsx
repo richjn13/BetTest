@@ -9,7 +9,12 @@ export function GroupNav({ groupId, isAdmin }: { groupId: string; isAdmin: boole
     { href: `/g/${groupId}/picks`, label: "Picks" },
     { href: `/g/${groupId}/leaderboard`, label: "Leaderboard" },
     { href: `/g/${groupId}/profile`, label: "Profile" },
-    ...(isAdmin ? [{ href: `/g/${groupId}/admin`, label: "Admin" }] : []),
+    ...(isAdmin
+      ? [
+          { href: `/g/${groupId}/admin/games`, label: "Games" },
+          { href: `/g/${groupId}/admin`, label: "Admin", exact: true },
+        ]
+      : []),
   ];
 
   return (
@@ -19,7 +24,12 @@ export function GroupNav({ groupId, isAdmin }: { groupId: string; isAdmin: boole
       aria-label="Sections"
     >
       {tabs.map((tab) => {
-        const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+        // Admin has a page nested under it, which would otherwise light up
+        // both tabs at once.
+        const active =
+          "exact" in tab && tab.exact
+            ? pathname === tab.href
+            : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
         return (
           <Link
             key={tab.href}

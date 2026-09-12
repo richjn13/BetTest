@@ -27,9 +27,9 @@ competition.
 
 ## Over/unders
 
-**Off by default.** A game has no total until an admin adds one under
-**Admin → Games**: type the number, press Add O/U, and members get an
-over/under row on that game alongside the spread.
+**Off by default.** A game has no total until an admin turns one on from the
+**Games** tab and pulls the numbers. Members then get an over/under row on that
+game alongside the spread.
 
 - A correct over/under is worth **1 point**. It is never the lock, so it cannot
   be doubled.
@@ -137,7 +137,7 @@ Three things keep it current, in order of how often they act:
 | --- | --- |
 | The scores refresh | Every run. Each scores response carries the kickoff time, so keeping it current costs no extra API call |
 | A weekly line pull | Whenever you pull a week again. Tuesday is also when flex decisions are announced |
-| Admin → Games | By hand, using the date box on a game's row |
+| Games page | By hand, using the date box on a game's row |
 
 A locked line is yours and the feed will not move the number, but it will move
 the time, because the schedule belongs to the NFL rather than to your pull.
@@ -147,7 +147,7 @@ admin form refuses to change it. Picks were already settled against it.
 
 Other changes:
 
-- **Postponed or canceled** — set the status under Admin → Games. The game drops
+- **Postponed or canceled** — set the status on the Games page. The game drops
   out of that week's scoring entirely, for everyone.
 - **A game rescheduled into a different week** keeps its original week and its
   picks, since a pick belongs to a game rather than to a date. Keep that week
@@ -155,7 +155,7 @@ Other changes:
 - **A game added to the slate** appears on the next line pull.
 - **A game removed from the slate is never deleted automatically**, because
   deleting a game takes every pick on it. Instead a pull names anything it did
-  not mention, and that game's row in Admin → Games is outlined in red saying it
+  not mention, and that game's row on the Games page is outlined in red saying it
   was not in the latest pull. Delete it yourself once you are sure.
 
 **Moved games are marked in red** wherever they appear: on the picks page a
@@ -436,6 +436,24 @@ If it reports a problem instead, the message names the cause. Nothing is damaged
 either way: a failed fetch changes no stored data, so whatever spreads you
 already had stay exactly as they were.
 
+### Two admin pages
+
+The admin area is split in two, and the split matters.
+
+**Games** is the slate: scores, kickoff times, statuses, over/under toggles,
+adding a game, deleting one. It holds both competitions, with tabs for NFL and
+NCAA and a week list under each. This is the page in constant use during a
+weekend, and every edit on it reloads it.
+
+**Admin** is everything that is decided once: pulling a week's games, pulling
+totals, opening and closing weeks, the join code, invites, members, pick
+corrections, points adjustments and the audit log.
+
+They were one page, which meant a typo in a score reloaded the pull buttons
+too, and the button that spends an API call sat a thumb's width from the one
+that fixes a final score. Keeping them apart is what makes both safe to use
+quickly.
+
 ### Pulling a week's games
 
 **Admin → Pull games** is the on-demand path. Choose the competition, the season
@@ -469,7 +487,7 @@ games you did pull.
 
 Over/unders are off by default and never appear until you turn one on.
 
-1. Under **Admin → Games**, press **Over/under on** for each game that should
+1. On the **Games** tab, press **Over/under on** for each game that should
    have one. The game is flagged; it has no number yet, and members see nothing.
 2. Under **Admin → Pull totals**, press **Pull totals**. That fetches the
    current numbers and writes them onto every flagged game in the week. One
@@ -525,7 +543,7 @@ a month on Sonnet.
 ### How a pulled game gets scored
 
 Games can arrive from three places: the Claude pull, the odds feed, and hand
-entry under Admin → Games. Scores arrive from one, the odds feed, and it
+entry on the Games page. Scores arrive from one, the odds feed, and it
 recognizes a game by the event id it assigned. A game created by a Claude pull
 has no such id.
 
@@ -538,7 +556,7 @@ how many it linked.
 The practical consequence: **if you use the Claude pull, keep `ODDS_API_KEY` set
 too.** The pull gives you the lines you want and the feed quietly supplies the
 results. Without the feed nothing scores automatically, and you enter finals by
-hand under Admin → Games, which regrades that game's picks immediately.
+hand on the Games page, which regrades that game's picks immediately.
 
 ### Which sportsbook the spreads come from
 
@@ -665,7 +683,7 @@ separately, so a free-plan restriction on scores never presents as a failure to
 fetch spreads.
 
 The practical effect on a free plan: **spreads work, results may lag.** Enter a
-final score by hand under Admin → Games when they do. Saving a score there
+final score by hand on the Games page when they do. Saving a score there
 regrades every pick on that game immediately, so the leaderboard is correct
 either way.
 
@@ -810,8 +828,8 @@ the rows below are things it will find for you.
 | `This deployment is missing ...` on the join form | Exactly what it says. Those variables are unset in Vercel, or have a stray space. Nothing was saved. Fix them, redeploy, try again. |
 | The app loads but creating a group hangs or errors | Almost always the `anon` key was pasted instead of `service_role`. `/setup` decodes the key and tells you which one you pasted. |
 | The join screen works, then everything breaks after you create a group | Usually a missing `SESSION_SECRET`. The join screen does not read it, but every page does once you have a session cookie. `/setup` will show it. |
-| The same game appears twice in a week | Delete the extra under Admin → Games, then run `0003_one_game_per_matchup.sql` again. It refuses to build its index while duplicates exist and tells you so. |
-| A pulled game never gets a score | It was never linked to the odds feed. Set `ODDS_API_KEY` and press refresh, which adopts it, or enter the final by hand under Admin → Games. |
+| The same game appears twice in a week | Delete the extra on the Games page, then run `0003_one_game_per_matchup.sql` again. It refuses to build its index while duplicates exist and tells you so. |
+| A pulled game never gets a score | It was never linked to the odds feed. Set `ODDS_API_KEY` and press refresh, which adopts it, or enter the final by hand on the Games page. |
 | `/setup` says The Odds API returned 404 | Fixed. The setup probe was asking for a path that does not exist; your actual refresh was unaffected. Pull the latest and redeploy. |
 | Odds refresh fails right after you add the key | Check you pasted the Odds API key and not the Anthropic one. `/setup` names this directly. The Odds API key has no `sk-` prefix. |
 | A Claude pull says the key was rejected | `ANTHROPIC_API_KEY` is wrong, or was set in Vercel without redeploying. |
@@ -824,7 +842,7 @@ the rows below are things it will find for you.
 | Picks tab says "No games yet" | Expected on a fresh database. Add a game by hand (step 8) or run the odds refresh (step 9). |
 | A game will not accept a pick | Its kickoff has passed. That is the rule working. Use Admin → Picks to edit a pick after kickoff. |
 | Odds refresh says `401` | The key is wrong, or it was set in Vercel without redeploying afterwards. `/setup` checks the key directly and says which. |
-| Odds refresh mentions scores but the spreads came through | Expected on the free plan. The scores endpoint restricts finished-game lookups to paid plans, so results can lag. Enter a final score by hand under Admin → Games, or upgrade. The spreads are unaffected. |
+| Odds refresh mentions scores but the spreads came through | Expected on the free plan. The scores endpoint restricts finished-game lookups to paid plans, so results can lag. Enter a final score by hand on the Games page, or upgrade. The spreads are unaffected. |
 | Odds refresh says `Usage quota` | The monthly allowance is spent. `/setup` shows how many calls remain. |
 | Leaderboard shows 0 after a game is final | Grading runs on the weekly pass or when an admin saves a score override. Press Admin → Refresh odds and scores now. |
 | Cron job never appears in Vercel | `vercel.json` has to be on the deployed branch. Cron jobs register on deploy, not on save. |

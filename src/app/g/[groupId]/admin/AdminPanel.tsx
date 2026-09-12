@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormState } from "react-dom";
 import { SubmitButton } from "@/components/SubmitButton";
 import { InviteMessage } from "./InviteMessage";
-import { formatKickoff, formatPoints, spreadForSide } from "@/lib/format";
+import { formatPoints } from "@/lib/format";
 import { abbreviate } from "@/lib/teams";
-import { NFL_TEAMS } from "@/lib/teams";
 import { SPORTS, sportConfig, sportLabel, type Sport } from "@/lib/sports";
-import { effectiveSpread } from "@/lib/types";
 import type {
   AdminAction,
   Game,
@@ -19,20 +18,16 @@ import type {
   User,
   Week,
 } from "@/lib/types";
-import { IDLE, type AdminState } from "./state";
+import { IDLE } from "./state";
+import { Feedback, NoteField, Section } from "./ui";
 import {
-  addGameAction,
   adjustPointsAction,
-  deleteGameAction,
   editPickAction,
-  overrideGameAction,
   pullGamesAction,
   pullTotalsAction,
   regenerateCodeAction,
   removeUserAction,
   setAdminAction,
-  setTotalAction,
-  toggleTotalAction,
   setWeekClosedAction,
   syncOddsAction,
 } from "./actions";
@@ -51,7 +46,6 @@ type Props = {
 
 export function AdminPanel(props: Props) {
   const { viewerId, group, members, weeks, week, games, picks, actions, adjustments } = props;
-  const router = useRouter();
 
   return (
     <div className="space-y-4">
@@ -84,30 +78,26 @@ export function AdminPanel(props: Props) {
         <OddsSection groupId={group.id} />
       </Section>
 
+      <Section title="Games">
+        <p className="text-sm text-muted">
+          The slate, scores, kickoff times and over/unders live on their own
+          page. They change constantly during a week, and every change reloads
+          the page they sit on, which is no way to share a page with buttons
+          that spend money.
+        </p>
+        <Link href={`/g/${group.id}/admin/games`} className="btn-primary mt-3 inline-block">
+          Open the games page
+        </Link>
+      </Section>
+
       <Section
-        title="Games"
+        title="Picks"
         aside={
           weeks.length > 0 && week ? (
-            <select
-              value={week.id}
-              onChange={(event) =>
-                router.push(`/g/${group.id}/admin?week=${event.target.value}`)
-              }
-              className="field w-auto py-1 text-sm"
-            >
-              {weeks.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.season_year} · {option.label}
-                </option>
-              ))}
-            </select>
+            <WeekPicker groupId={group.id} weeks={weeks} week={week} />
           ) : null
         }
       >
-        <GamesSection groupId={group.id} week={week} games={games} weeks={weeks} />
-      </Section>
-
-      <Section title="Picks">
         <PicksSection groupId={group.id} members={members} games={games} picks={picks} />
       </Section>
 
@@ -133,54 +123,34 @@ export function AdminPanel(props: Props) {
 
 // ------------------------------------------------------------------ shells
 
-function Section({
-  title,
-  aside,
-  children,
-}: {
-  title: string;
-  aside?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <details className="card" open>
-      <summary className="cursor-pointer list-none px-4 py-3 font-semibold">{title}</summary>
-      <div className="border-t border-edge px-4 py-4">
-        {aside && <div className="mb-3 flex justify-end">{aside}</div>}
-        {children}
-      </div>
-    </details>
-  );
-}
-
-function Feedback({ state }: { state: AdminState }) {
-  if (state.error) {
-    return (
-      <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">
-        {state.error}
-      </p>
-    );
-  }
-  if (state.message) {
-    return (
-      <p role="status" className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
-        {state.message}
-      </p>
-    );
-  }
-  return null;
-}
-
-function NoteField({ hint }: { hint: string }) {
-  return (
-    <div>
-      <label className="label">Note (required)</label>
-      <input name="note" required className="field" placeholder={hint} />
-    </div>
-  );
-}
-
 // ----------------------------------------------------------------- sections
+
+/** Chooses which week the picks list below is showing. */
+function WeekPicker({
+  groupId,
+  weeks,
+  week,
+}: {
+  groupId: string;
+  weeks: Week[];
+  week: Week;
+}) {
+  const router = useRouter();
+  return (
+    <select
+      value={week.id}
+      onChange={(event) => router.push(`/g/${groupId}/admin?week=${event.target.value}`)}
+      className="field w-auto py-1 text-sm"
+      aria-label="Week"
+    >
+      {[...weeks].reverse().map((option) => (
+        <option key={option.id} value={option.id}>
+          {sportLabel(option.sport)} · {option.season_year} · {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function GroupSection({ group }: { group: Group }) {
   const [state, action] = useFormState(regenerateCodeAction, IDLE);
@@ -384,300 +354,6 @@ function OddsSection({ groupId }: { groupId: string }) {
         Refresh odds and scores now
       </SubmitButton>
     </form>
-  );
-}
-
-function GamesSection({
-  groupId,
-  week,
-  games,
-  weeks,
-}: {
-  groupId: string;
-  week: Week | null;
-  games: Game[];
-  weeks: Week[];
-}) {
-  const [addState, addGame] = useFormState(addGameAction, IDLE);
-  const [overrideState, override] = useFormState(overrideGameAction, IDLE);
-  const [deleteState, remove] = useFormState(deleteGameAction, IDLE);
-  const [totalState, setTotal] = useFormState(setTotalAction, IDLE);
-  const [toggleState, toggleTotal] = useFormState(toggleTotalAction, IDLE);
-
-  const defaultYear = week?.season_year ?? new Date().getUTCFullYear();
-  const defaultWeek = week?.week_number ?? 1;
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="mb-2 text-sm font-semibold">Add a game by hand</h3>
-        <form action={addGame} className="space-y-3">
-          <input type="hidden" name="groupId" value={groupId} />
-          <Feedback state={addState} />
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Season</label>
-              <input
-                name="seasonYear"
-                type="number"
-                defaultValue={defaultYear}
-                required
-                className="field"
-              />
-            </div>
-            <div>
-              <label className="label">Week (0 = college week zero, 19-22 = NFL playoffs)</label>
-              <input
-                name="weekNumber"
-                type="number"
-                min={0}
-                max={22}
-                defaultValue={defaultWeek}
-                required
-                className="field"
-              />
-            </div>
-            <div>
-              <label className="label">Away team</label>
-              <TeamSelect name="awayTeam" />
-            </div>
-            <div>
-              <label className="label">Home team</label>
-              <TeamSelect name="homeTeam" />
-            </div>
-            <div>
-              <label className="label">Kickoff (your local time)</label>
-              <input name="kickoffTime" type="datetime-local" required className="field" />
-            </div>
-            <div>
-              <label className="label">Home spread</label>
-              <input
-                name="homeSpread"
-                type="number"
-                step="0.5"
-                placeholder="-3.5"
-                className="field"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted">
-            Negative means the home team is favored. Leave blank for no line yet.
-          </p>
-          <SubmitButton className="btn" pendingLabel="Adding...">
-            Add game
-          </SubmitButton>
-        </form>
-      </div>
-
-      <div>
-        <h3 className="mb-2 text-sm font-semibold">
-          {week ? `${sportLabel(week.sport)} ${week.label} slate` : "No week selected"}
-        </h3>
-        <Feedback state={overrideState} />
-        <Feedback state={deleteState} />
-        <Feedback state={totalState} />
-        <Feedback state={toggleState} />
-        {games.length === 0 ? (
-          <p className="text-sm text-muted">No games in this week yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {games.map((game) => {
-              // Older than the newest stamp in this week means the last pull
-              // did not mention it, so it has come off the slate.
-              const newestSeen = games.reduce<string | null>(
-                (latest, other) =>
-                  other.last_seen_in_feed_at && (!latest || other.last_seen_in_feed_at > latest)
-                    ? other.last_seen_in_feed_at
-                    : latest,
-                null,
-              );
-              const droppedOff =
-                newestSeen !== null &&
-                (game.last_seen_in_feed_at === null || game.last_seen_in_feed_at < newestSeen);
-
-              return (
-              <li
-                key={game.id}
-                className={`rounded-lg border p-3 ${
-                  droppedOff ? "border-[rgb(var(--loss))]/50" : "border-edge"
-                }`}
-              >
-                {droppedOff && (
-                  <p className="mb-2 text-xs font-semibold text-[rgb(var(--loss))]">
-                    Not in the latest pull. It may have come off the slate. Picks
-                    on it still count until you delete it.
-                  </p>
-                )}
-                {game.kickoff_changed_at && (
-                  <p className="mb-2 text-xs font-medium text-[rgb(var(--loss))]">
-                    Kickoff has moved since this game was first listed.
-                  </p>
-                )}
-                <div className="mb-2 space-y-0.5 text-sm">
-                  <p className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-mono font-semibold">
-                      {abbreviate(game.away_team)}
-                    </span>
-                    <span className="text-xs uppercase tracking-wide text-muted">away</span>
-                    <span className="text-muted">{game.away_team}</span>
-                  </p>
-                  <p className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-mono font-semibold">
-                      {abbreviate(game.home_team)}
-                    </span>
-                    <span className="text-xs uppercase tracking-wide text-muted">home</span>
-                    <span className="text-muted">{game.home_team}</span>
-                  </p>
-                  <p className="text-xs text-muted">
-                    {formatKickoff(game.kickoff_time)} ·{" "}
-                    {spreadForSide(effectiveSpread(game), "home")}
-                    {game.spread_frozen_at
-                      ? " (frozen)"
-                      : game.spread_locked_at
-                        ? " (locked)"
-                        : ""} · {game.status}
-                    {game.score_overridden_at ? " · manual" : ""}
-                  </p>
-                </div>
-
-                <form action={override} className="grid grid-cols-2 gap-2 sm:grid-cols-6">
-                  <input type="hidden" name="groupId" value={groupId} />
-                  <input type="hidden" name="gameId" value={game.id} />
-                  <select name="status" defaultValue={game.status} className="field py-1 text-sm">
-                    {["scheduled", "live", "final", "postponed", "canceled"].map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    name="finalAwayScore"
-                    type="number"
-                    placeholder={`${abbreviate(game.away_team)} (away)`}
-                    defaultValue={game.final_away_score ?? ""}
-                    className="field py-1 text-sm"
-                  />
-                  <input
-                    name="finalHomeScore"
-                    type="number"
-                    placeholder={`${abbreviate(game.home_team)} (home)`}
-                    defaultValue={game.final_home_score ?? ""}
-                    className="field py-1 text-sm"
-                  />
-                  <input
-                    name="kickoffTime"
-                    type="datetime-local"
-                    aria-label="Move kickoff, leave blank to keep it"
-                    className="field py-1 text-sm"
-                  />
-                  <input
-                    name="note"
-                    required
-                    placeholder="why"
-                    className="field py-1 text-sm"
-                  />
-                  <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
-                    Save
-                  </SubmitButton>
-                </form>
-
-                <p className="mt-2 text-xs text-muted">
-                  The date box moves the kickoff, for a flexed game the feed has
-                  not caught up with. Leave it blank to keep the current time.
-                </p>
-
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <form action={toggleTotal}>
-                    <input type="hidden" name="groupId" value={groupId} />
-                    <input type="hidden" name="gameId" value={game.id} />
-                    <input
-                      type="hidden"
-                      name="enabled"
-                      value={game.totals_enabled ? "false" : "true"}
-                    />
-                    <SubmitButton
-                      className={`btn py-1 text-sm ${
-                        game.totals_enabled ? "text-muted" : ""
-                      }`}
-                      pendingLabel="Saving..."
-                    >
-                      {game.totals_enabled ? "Over/under off" : "Over/under on"}
-                    </SubmitButton>
-                  </form>
-
-                  {game.totals_enabled && (
-                    <>
-                      <span className="text-xs text-muted">
-                        {game.total_points === null
-                          ? "waiting on a number, pull totals above"
-                          : `set at ${game.total_points}`}
-                      </span>
-                      <form action={setTotal} className="flex gap-2">
-                        <input type="hidden" name="groupId" value={groupId} />
-                        <input type="hidden" name="gameId" value={game.id} />
-                        <input
-                          name="total"
-                          type="number"
-                          step="0.5"
-                          min={0}
-                          max={150}
-                          defaultValue={game.total_points ?? ""}
-                          placeholder="by hand"
-                          aria-label="Over/under total"
-                          className="field w-24 py-1 text-sm"
-                        />
-                        <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
-                          Set
-                        </SubmitButton>
-                      </form>
-                    </>
-                  )}
-                </div>
-
-
-                <form action={remove} className="mt-2 flex gap-2">
-                  <input type="hidden" name="groupId" value={groupId} />
-                  <input type="hidden" name="gameId" value={game.id} />
-                  <input
-                    name="note"
-                    required
-                    placeholder="reason for deleting"
-                    className="field py-1 text-sm"
-                  />
-                  <SubmitButton
-                    className="btn shrink-0 border-red-500/40 py-1 text-sm text-red-500"
-                    pendingLabel="Deleting..."
-                  >
-                    Delete game
-                  </SubmitButton>
-                </form>
-              </li>
-              );
-            })}
-          </ul>
-        )}
-        {weeks.length === 0 && (
-          <p className="mt-2 text-xs text-muted">
-            Weeks appear once the first game exists, added here or by the odds feed.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TeamSelect({ name }: { name: string }) {
-  return (
-    <select name={name} required defaultValue="" className="field">
-      <option value="" disabled>
-        Choose a team
-      </option>
-      {NFL_TEAMS.map((team) => (
-        <option key={team} value={team}>
-          {team}
-        </option>
-      ))}
-    </select>
   );
 }
 

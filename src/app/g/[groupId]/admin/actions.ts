@@ -70,6 +70,7 @@ async function run(
   try {
     const message = await work({ id: user.id, username: user.username });
     revalidatePath(`/g/${groupId}/admin`);
+    revalidatePath(`/g/${groupId}/admin/games`);
     revalidatePath(`/g/${groupId}/picks`);
     revalidatePath(`/g/${groupId}/leaderboard`);
     return { error: null, message };
@@ -216,16 +217,17 @@ export async function addGameAction(
   const awayTeam = text(form, "awayTeam");
   const kickoff = text(form, "kickoffTime");
   const homeSpread = optionalNumber(form, "homeSpread");
+  const sport = readSport(form);
 
   return run(groupId, async (actor) => {
-    if (!seasonYear || !weekNumber) throw new AppError("Pick a season and week.");
+    if (!seasonYear || weekNumber === null) throw new AppError("Pick a season and week.");
     if (!homeTeam || !awayTeam) throw new AppError("Both teams are required.");
     if (homeTeam === awayTeam) throw new AppError("A team can't play itself.");
 
     const kickoffDate = new Date(kickoff);
     if (Number.isNaN(kickoffDate.getTime())) throw new AppError("Enter a valid kickoff time.");
 
-    const week = await ensureWeek(seasonYear, weekNumber);
+    const week = await ensureWeek(seasonYear, weekNumber, sport);
     const game = await createGame({
       weekId: week.id,
       homeTeam,
@@ -240,7 +242,7 @@ export async function addGameAction(
       actorUsername: actor.username,
       action: "add_game",
       gameId: game.id,
-      details: { homeTeam, awayTeam, homeSpread, week: week.label },
+      details: { sport, homeTeam, awayTeam, homeSpread, week: week.label },
     });
     return `Added ${awayTeam} at ${homeTeam}.`;
   });
