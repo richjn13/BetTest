@@ -1,5 +1,3 @@
-import { abbreviate } from "@/lib/teams";
-
 /**
  * Circular avatar, falling back to initials so a row never collapses when
  * somebody has not uploaded a picture.
@@ -36,5 +34,3 @@ export function Avatar({
     </span>
   );
 }
-
-export { abbreviate };

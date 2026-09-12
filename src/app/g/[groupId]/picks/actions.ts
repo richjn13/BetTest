@@ -1,8 +1,15 @@
 "use server";
 
 import { requireViewer } from "@/lib/auth";
-import { AppError, clearLock, getGame, savePick, setLock } from "@/lib/queries";
-import type { Side } from "@/lib/types";
+import {
+  AppError,
+  clearLock,
+  getGame,
+  savePick,
+  saveTotalPick,
+  setLock,
+} from "@/lib/queries";
+import type { Side, TotalSide } from "@/lib/types";
 
 export type PickState = { error: string | null };
 
@@ -26,6 +33,8 @@ export async function pickAction(_previous: PickState, form: FormData): Promise<
 
     if (intent === "home" || intent === "away") {
       await savePick(user.id, gameId, intent as Side);
+    } else if (intent === "over" || intent === "under") {
+      await saveTotalPick(user.id, gameId, intent as TotalSide);
     } else if (intent === "lock") {
       await setLock(user.id, gameId);
     } else if (intent === "unlock") {

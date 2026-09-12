@@ -8,18 +8,21 @@
  * a 404 rather than an obvious error.
  */
 
-export const API_ROOT = "https://api.the-odds-api.com/v4";
-export const NFL_PATH = "/sports/americanfootball_nfl";
+const API_ROOT = "https://api.the-odds-api.com/v4";
 
-/** Paths are relative to the API root, so each one says where it really lives. */
-export const ENDPOINTS = {
-  /** Root-level. Lists available sports, and is not billed against the quota. */
-  sports: "/sports",
-  odds: `${NFL_PATH}/odds`,
-  scores: `${NFL_PATH}/scores`,
-} as const;
+/** Root-level. Lists available sports, and is not billed against the quota. */
+export const SPORTS_ENDPOINT = "/sports";
 
-export type Endpoint = (typeof ENDPOINTS)[keyof typeof ENDPOINTS];
+/** Odds and scores live under a sport; the sports listing does not. */
+export function oddsEndpoint(oddsApiKey: string): string {
+  return `/sports/${oddsApiKey}/odds`;
+}
+
+export function scoresEndpoint(oddsApiKey: string): string {
+  return `/sports/${oddsApiKey}/scores`;
+}
+
+export type Endpoint = string;
 
 export function oddsApiUrl(
   path: Endpoint,

@@ -12,7 +12,13 @@ import {
   type Selection,
   type Selections,
 } from "@/lib/selections";
-import { effectiveSpread, type GameCard, type Side } from "@/lib/types";
+import {
+  effectiveSpread,
+  effectiveTotal,
+  type GameCard,
+  type Side,
+  type TotalSide,
+} from "@/lib/types";
 import { pickAction } from "./actions";
 
 /**
@@ -85,6 +91,11 @@ export function PicksBoard({
     save(gameId, side, previous);
   };
 
+  const pickTotal = (gameId: string, side: TotalSide) => {
+    // Totals carry no week-wide rule, so there is nothing to roll back to.
+    save(gameId, side, selections);
+  };
+
   const toggleLock = (gameId: string) => {
     const previous = selections;
     const wasLocked = selections[gameId]?.isLock ?? false;
@@ -133,6 +144,7 @@ export function PicksBoard({
             error={errors[card.game.id]}
             readOnly={readOnly}
             onChoose={(side) => choose(card.game.id, side)}
+            onPickTotal={(side) => pickTotal(card.game.id, side)}
             onToggleLock={() => toggleLock(card.game.id)}
           />
         ))}
@@ -153,6 +165,7 @@ function GameRow({
   error,
   readOnly,
   onChoose,
+  onPickTotal,
   onToggleLock,
 }: {
   card: GameCard;
@@ -161,9 +174,10 @@ function GameRow({
   error?: string;
   readOnly: boolean;
   onChoose: (side: Side) => void;
+  onPickTotal: (side: TotalSide) => void;
   onToggleLock: () => void;
 }) {
-  const { game, revealed } = card;
+  const { game } = card;
   const open = card.isOpen && !readOnly;
   const spread = effectiveSpread(game);
   const countdown = timeUntil(game.kickoff_time);
@@ -263,6 +277,8 @@ function GameRow({
         </div>
       )}
 
+      <TotalRow card={card} open={open} onPick={onPickTotal} />
+
       {outcome.line && (
         <div className="border-t border-edge bg-surface/60 px-3 py-2.5 text-xs">
           <p className="font-medium">{outcome.line}</p>
@@ -345,6 +361,68 @@ function Consensus({
   );
 }
 
+/**
+ * Over/under. Absent entirely unless an admin turned it on for this game, so
+ * a pool that never uses totals never sees a trace of them.
+ */
+function TotalRow({
+  card,
+  open,
+  onPick,
+}: {
+  card: GameCard;
+  open: boolean;
+  onPick: (side: TotalSide) => void;
+}) {
+  const { game, totalPick } = card;
+  if (!game.totals_enabled) return null;
+
+  const line = effectiveTotal(game);
+  if (line === null) return null;
+
+  const chosen = totalPick?.picked_side as TotalSide | undefined;
+  const points = totalPick?.points_awarded === null ? null : Number(totalPick?.points_awarded);
+  const combined =
+    game.final_home_score !== null && game.final_away_score !== null
+      ? game.final_home_score + game.final_away_score
+      : null;
+
+  return (
+    <div className="flex items-center gap-2 border-t border-edge px-3 py-2">
+      <span className="shrink-0 text-xs text-muted">
+        O/U <span className="font-mono text-ink">{line}</span>
+        {combined !== null && <span className="ml-1 font-mono">({combined})</span>}
+      </span>
+      <div className="ml-auto flex gap-1.5">
+        {(["over", "under"] as const).map((side) => (
+          <button
+            key={side}
+            type="button"
+            onClick={open ? () => onPick(side) : undefined}
+            disabled={!open}
+            aria-pressed={chosen === side}
+            className={`min-h-[32px] rounded-lg border px-3 text-xs font-medium capitalize
+              transition-colors disabled:cursor-default ${
+                chosen === side ? "border-accent bg-accent/10" : "border-edge text-muted"
+              } ${open ? "hover:border-accent" : ""}`}
+          >
+            {side}
+          </button>
+        ))}
+      </div>
+      {points !== null && (
+        <span
+          className={`shrink-0 font-mono text-xs ${
+            points > 0 ? "font-semibold text-[rgb(var(--win))]" : "text-muted"
+          }`}
+        >
+          {points > 0 ? `+${points}` : "0"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function SideButton({
   side,
   game,
@@ -365,6 +443,7 @@ function SideButton({
   const team = side === "home" ? game.home_team : game.away_team;
   const opponent = side === "home" ? game.away_team : game.home_team;
   const score = side === "home" ? game.final_home_score : game.final_away_score;
+  const rank = side === "home" ? game.home_rank : game.away_rank;
 
   return (
     <button
@@ -383,6 +462,9 @@ function SideButton({
     >
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold leading-tight">
+          {rank !== null && (
+            <span className="mr-1 font-mono text-xs font-bold text-accent">#{rank}</span>
+          )}
           {nickname(team)}
         </span>
         <span className="block text-[11px] text-muted">

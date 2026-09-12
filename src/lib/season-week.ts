@@ -1,3 +1,5 @@
+import type { Sport } from "./sports";
+
 /**
  * The Odds API returns kickoff times but no week numbers, so weeks are derived
  * from the calendar.
@@ -65,4 +67,51 @@ function seasonStartOverride(): number | null {
   if (!raw) return null;
   const parsed = Date.parse(`${raw}T${String(BOUNDARY_HOUR_UTC).padStart(2, "0")}:00:00Z`);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+// --------------------------------------------------------------- college
+
+/**
+ * College football's week 1 Saturday. The season opens on the last weekend of
+ * August or the first of September, so the first Saturday on or after the 23rd
+ * is the anchor.
+ */
+export function ncaafSeasonStartUtc(seasonYear: number): number {
+  const august = new Date(Date.UTC(seasonYear, 7, 23, BOUNDARY_HOUR_UTC));
+  const daysToSaturday = (6 - august.getUTCDay() + 7) % 7;
+  return august.getTime() + daysToSaturday * MS_PER_DAY;
+}
+
+/**
+ * Is this kickoff on a Saturday, in the sense that matters for college
+ * football? The window runs from Saturday noon UTC, which is morning on the
+ * east coast, to Sunday 09:00 UTC, which is after the latest west coast game.
+ */
+export function isSaturdayGame(kickoff: Date): boolean {
+  const day = kickoff.getUTCDay();
+  const hour = kickoff.getUTCHours();
+  if (day === 6) return hour >= 12;
+  if (day === 0) return hour < 9;
+  return false;
+}
+
+/** The week a college kickoff belongs to, counting Saturdays from the opener. */
+export function ncaafWeekForKickoff(kickoff: Date, seasonYear?: number): SeasonWeek {
+  const year = kickoff.getUTCFullYear();
+  const season =
+    seasonYear ?? (kickoff.getTime() < ncaafSeasonStartUtc(year) ? year - 1 : year);
+  const elapsed = kickoff.getTime() - ncaafSeasonStartUtc(season);
+  const raw = Math.floor(elapsed / MS_PER_WEEK) + 1;
+  return { seasonYear: season, weekNumber: Math.min(16, Math.max(1, raw)) };
+}
+
+/** Week derivation for either sport. */
+export function weekForSport(
+  kickoff: Date,
+  sport: Sport,
+  seasonYear?: number,
+): SeasonWeek {
+  return sport === "ncaaf"
+    ? ncaafWeekForKickoff(kickoff, seasonYear)
+    : weekForKickoff(kickoff, seasonYear);
 }

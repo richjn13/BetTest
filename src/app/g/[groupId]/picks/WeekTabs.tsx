@@ -33,7 +33,7 @@ export function WeekTabs({
         return (
           <Link
             key={week.id}
-            href={`${basePath}?week=${week.id}`}
+            href={`${basePath}${basePath.includes("?") ? "&" : "?"}week=${week.id}`}
             role="tab"
             aria-selected={active}
             scroll={false}

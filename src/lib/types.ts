@@ -1,6 +1,7 @@
-import type { GameStatus, PickResult, Side } from "./scoring";
+import type { GameStatus, Market, PickResult, Side, TotalSide } from "./scoring";
+import type { Sport } from "./sports";
 
-export type { GameStatus, PickResult, Side };
+export type { GameStatus, Market, PickResult, Side, TotalSide };
 
 export type Group = {
   id: string;
@@ -28,16 +29,12 @@ export type Week = {
   week_number: number;
   season_type: "regular" | "postseason";
   label: string;
+  sport: Sport;
   /** Null until lines are pulled. Members never see an unopened week. */
   opened_at: string | null;
   /** Set when the week is finished. Nothing may change it afterwards. */
   closed_at: string | null;
 };
-
-/** A week accepts picks and line updates only while it is open. */
-export function isWeekOpen(week: Week): boolean {
-  return week.opened_at !== null && week.closed_at === null;
-}
 
 export type Game = {
   id: string;
@@ -54,6 +51,13 @@ export type Game = {
   kickoff_changed_at: string | null;
   /** When a line pull last saw this game on the slate. */
   last_seen_in_feed_at: string | null;
+  /** Poll position when the week was pulled. College only, null if unranked. */
+  home_rank: number | null;
+  away_rank: number | null;
+  /** Over/under, off unless an admin turns it on and enters a number. */
+  total_points: number | null;
+  frozen_total: number | null;
+  totals_enabled: boolean;
   frozen_home_spread: number | null;
   final_home_score: number | null;
   final_away_score: number | null;
@@ -67,7 +71,8 @@ export type Pick = {
   user_id: string;
   game_id: string;
   week_id: string;
-  picked_side: Side;
+  picked_side: Side | TotalSide;
+  market: Market;
   is_lock: boolean;
   locked_at: string | null;
   points_awarded: number | null;
@@ -100,15 +105,22 @@ export type GameCard = {
   game: Game;
   pick: Pick | null;
   isOpen: boolean;
-  /** Other members' picks, revealed only once the game has kicked off. */
+  /** Other members' spread picks, revealed only once the game has kicked off. */
   revealed: { username: string; side: Side; isLock: boolean }[] | null;
   /** How the whole group split on this game. Null until kickoff. */
   consensus: { total: number; home: number; away: number } | null;
+  /** The viewer's over/under pick, when the game carries one. */
+  totalPick: Pick | null;
 };
 
 /** The line a pick is graded against: frozen once kickoff passes. */
 export function effectiveSpread(game: Game): number | null {
   return game.spread_frozen_at ? game.frozen_home_spread : game.home_spread;
+}
+
+/** The over/under a pick is graded against, on the same rule. */
+export function effectiveTotal(game: Game): number | null {
+  return game.spread_frozen_at ? game.frozen_total : game.total_points;
 }
 
 /** Whether a game still accepts pick changes. Locking is strictly per-game. */

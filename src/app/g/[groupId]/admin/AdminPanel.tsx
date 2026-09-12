@@ -7,6 +7,7 @@ import { InviteMessage } from "./InviteMessage";
 import { formatKickoff, formatPoints, spreadForSide } from "@/lib/format";
 import { abbreviate } from "@/lib/teams";
 import { NFL_TEAMS } from "@/lib/teams";
+import { SPORTS, sportLabel } from "@/lib/sports";
 import { effectiveSpread } from "@/lib/types";
 import type {
   AdminAction,
@@ -28,6 +29,7 @@ import {
   regenerateCodeAction,
   removeUserAction,
   setAdminAction,
+  setTotalAction,
   setWeekClosedAction,
   syncOddsAction,
 } from "./actions";
@@ -218,6 +220,9 @@ function WeekStatusSection({ groupId, weeks }: { groupId: string; weeks: Week[] 
                          border border-edge p-3"
             >
               <span className="text-sm font-medium">
+                <span className="mr-2 rounded bg-edge px-1.5 py-0.5 text-xs font-semibold">
+                  {sportLabel(week.sport)}
+                </span>
                 {week.label}
                 <span className="ml-2 text-xs font-normal text-muted">
                   {week.closed_at ? "closed" : "open"}
@@ -254,6 +259,20 @@ function PullSection({ groupId, week }: { groupId: string; week: Week | null }) 
         and only another pull replaces it.
       </p>
       <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="label">Competition</label>
+          <select name="sport" defaultValue={week?.sport ?? "nfl"} className="field">
+            {SPORTS.map((sport) => (
+              <option key={sport} value={sport}>
+                {sportLabel(sport)}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted">
+            NCAA pulls the twenty most interesting Saturday games with their AP
+            ranking, so you can choose from them.
+          </p>
+        </div>
         <div>
           <label className="label">Season</label>
           <input
@@ -319,6 +338,7 @@ function GamesSection({
   const [addState, addGame] = useFormState(addGameAction, IDLE);
   const [overrideState, override] = useFormState(overrideGameAction, IDLE);
   const [deleteState, remove] = useFormState(deleteGameAction, IDLE);
+  const [totalState, setTotal] = useFormState(setTotalAction, IDLE);
 
   const defaultYear = week?.season_year ?? new Date().getUTCFullYear();
   const defaultWeek = week?.week_number ?? 1;
@@ -387,10 +407,11 @@ function GamesSection({
 
       <div>
         <h3 className="mb-2 text-sm font-semibold">
-          {week ? `${week.label} slate` : "No week selected"}
+          {week ? `${sportLabel(week.sport)} ${week.label} slate` : "No week selected"}
         </h3>
         <Feedback state={overrideState} />
         <Feedback state={deleteState} />
+        <Feedback state={totalState} />
         {games.length === 0 ? (
           <p className="text-sm text-muted">No games in this week yet.</p>
         ) : (
@@ -500,10 +521,70 @@ function GamesSection({
                   not caught up with. Leave it blank to keep the current time.
                 </p>
 
+                <form action={setTotal} className="mt-2 flex flex-wrap gap-2">
+                  <input type="hidden" name="groupId" value={groupId} />
+                  <input type="hidden" name="gameId" value={game.id} />
+                  <input type="hidden" name="remove" value="false" />
+                  <input
+                    name="total"
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    max={150}
+                    defaultValue={game.total_points ?? ""}
+                    placeholder="over/under"
+                    aria-label="Over/under total"
+                    className="field w-32 py-1 text-sm"
+                  />
+                  <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
+                    {game.totals_enabled ? "Update O/U" : "Add O/U"}
+                  </SubmitButton>
+                  {game.totals_enabled && (
+                    <button
+                      type="submit"
+                      name="remove"
+                      value="true"
+                      className="btn py-1 text-sm text-muted"
+                    >
+                      Remove O/U
+                    </button>
+                  )}
+                </form>
+
                 <p className="mt-2 text-xs text-muted">
                   The date box moves the kickoff, for a flexed game the feed has
                   not caught up with. Leave it blank to keep the current time.
                 </p>
+
+                <form action={setTotal} className="mt-2 flex flex-wrap gap-2">
+                  <input type="hidden" name="groupId" value={groupId} />
+                  <input type="hidden" name="gameId" value={game.id} />
+                  <input type="hidden" name="remove" value="false" />
+                  <input
+                    name="total"
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    max={150}
+                    defaultValue={game.total_points ?? ""}
+                    placeholder="over/under"
+                    aria-label="Over/under total"
+                    className="field w-32 py-1 text-sm"
+                  />
+                  <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
+                    {game.totals_enabled ? "Update O/U" : "Add O/U"}
+                  </SubmitButton>
+                  {game.totals_enabled && (
+                    <button
+                      type="submit"
+                      name="remove"
+                      value="true"
+                      className="btn py-1 text-sm text-muted"
+                    >
+                      Remove O/U
+                    </button>
+                  )}
+                </form>
 
                 <form action={remove} className="mt-2 flex gap-2">
                   <input type="hidden" name="groupId" value={groupId} />

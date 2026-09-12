@@ -3,6 +3,7 @@ import { db, unwrap } from "./db";
 import { freezeKickedOffSpreads, gradeResolvedGames } from "./grading";
 import { refreshOdds, refreshScores } from "./odds";
 import { listOpenedWeeks } from "./queries";
+import type { Sport } from "./sports";
 
 export type RefreshResult = {
   ok: boolean;
@@ -40,7 +41,10 @@ export type RefreshResult = {
  */
 export type RefreshMode = "full" | "scores";
 
-export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshResult> {
+export async function runRefresh(
+  mode: RefreshMode = "full",
+  sport: Sport = "nfl",
+): Promise<RefreshResult> {
   const result: RefreshResult = {
     ok: true,
     degraded: [],
@@ -71,7 +75,7 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
   // two -- spreads barely move once a week is pulled and locked, but scores
   // change every few minutes while games are on.
   if (mode === "full") {
-    const odds = await refreshOdds();
+    const odds = await refreshOdds(sport);
     result.gamesInserted = odds.gamesInserted;
     result.gamesAdopted = odds.gamesAdopted ?? 0;
     result.spreadsUpdated = odds.spreadsUpdated;
@@ -87,7 +91,7 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
   // database first is free; the call is not.
   let pending: PendingScores = { count: 1, weekLabel: null, daysBack: 0 };
   try {
-    pending = await pendingScores();
+    pending = await pendingScores(new Date(), sport);
   } catch (error) {
     // If the check fails, fetch rather than silently skip.
     console.error("refresh: could not check for pending scores", error);
@@ -99,7 +103,10 @@ export async function runRefresh(mode: RefreshMode = "full"): Promise<RefreshRes
     // Only reach for the historical window when something is genuinely old
     // enough to need it. The plain request covers live and just-finished, and
     // is the one a free plan allows.
-    const scores = await refreshScores(pending.daysBack >= 1 ? pending.daysBack + 1 : null);
+    const scores = await refreshScores(
+      pending.daysBack >= 1 ? pending.daysBack + 1 : null,
+      sport,
+    );
     result.scoresUpdated = scores.scoresUpdated;
     if (scores.error) {
       result.scoresError = scores.error;
@@ -143,10 +150,13 @@ export type PendingScores = {
  * A game stuck unresolved for longer than a week is an admin problem, not a
  * feed problem, and stops counting so it cannot spend calls forever.
  */
-export async function pendingScores(now: Date = new Date()): Promise<PendingScores> {
+async function pendingScores(
+  now: Date = new Date(),
+  sport?: Sport,
+): Promise<PendingScores> {
   const none: PendingScores = { count: 0, weekLabel: null, daysBack: 0 };
 
-  const open = (await listOpenedWeeks()).filter((week) => week.closed_at === null);
+  const open = (await listOpenedWeeks(sport)).filter((week) => week.closed_at === null);
   if (open.length === 0) return none;
 
   const labels = new Map(open.map((week) => [week.id, week.label]));

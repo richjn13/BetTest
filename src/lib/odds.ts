@@ -1,14 +1,22 @@
 import "server-only";
 import { db, unwrap } from "./db";
 import { env } from "./env";
-import { weekForKickoff } from "./nfl-week";
+import { weekForSport } from "./season-week";
 import {
   extractHomeSpread,
   extractScores,
   type OddsEvent,
   type ScoreEvent,
 } from "./odds-parse";
-import { ENDPOINTS, oddsApiUrl, readableError, type Endpoint } from "./odds-url";
+import {
+  SPORTS_ENDPOINT,
+  oddsApiUrl,
+  oddsEndpoint,
+  readableError,
+  scoresEndpoint,
+  type Endpoint,
+} from "./odds-url";
+import { sportConfig, type Sport } from "./sports";
 import { listOpenedWeeks } from "./queries";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -60,7 +68,7 @@ function readQuota(response: Response): Quota {
 let lastQuota: Quota = { remaining: null, used: null };
 
 /** Quota counters from the most recent call this process made. */
-export function lastKnownQuota(): Quota {
+function lastKnownQuota(): Quota {
   return lastQuota;
 }
 
@@ -104,7 +112,7 @@ export async function probeOddsFeed(): Promise<{
   }
 
   try {
-    await getJson<unknown[]>(ENDPOINTS.sports);
+    await getJson<unknown[]>(SPORTS_ENDPOINT);
     const quota = lastKnownQuota();
     return {
       ok: true,
@@ -138,7 +146,7 @@ export async function probeOddsFeed(): Promise<{
  * A failed fetch is reported, not thrown: the stored spreads stay exactly as
  * they were, so members keep seeing the last known line instead of an error.
  */
-export async function refreshOdds(): Promise<SyncResult> {
+export async function refreshOdds(sport: Sport = "nfl"): Promise<SyncResult> {
   const result: SyncResult = {
     ok: true,
     gamesSeen: 0,
@@ -149,7 +157,7 @@ export async function refreshOdds(): Promise<SyncResult> {
 
   let events: OddsEvent[];
   try {
-    events = await getJson<OddsEvent[]>(ENDPOINTS.odds, {
+    events = await getJson<OddsEvent[]>(oddsEndpoint(sportConfig(sport).oddsApiKey), {
       regions: "us",
       markets: "spreads",
       oddsFormat: "american",
@@ -196,7 +204,7 @@ export async function refreshOdds(): Promise<SyncResult> {
   // Only weeks that have been deliberately pulled, and are not yet closed,
   // may receive anything. This is what keeps next week's lines from appearing
   // before you pull them, and what keeps a finished week finished.
-  const live = (await listOpenedWeeks()).filter((week) => week.closed_at === null);
+  const live = (await listOpenedWeeks(sport)).filter((week) => week.closed_at === null);
   const liveWeekIds = new Map(
     live.map((week) => [`${week.season_year}-${week.week_number}`, week.id]),
   );
@@ -206,7 +214,7 @@ export async function refreshOdds(): Promise<SyncResult> {
     const kickoff = new Date(event.commence_time);
     if (Number.isNaN(kickoff.getTime())) continue;
 
-    const { seasonYear, weekNumber } = weekForKickoff(kickoff);
+    const { seasonYear, weekNumber } = weekForSport(kickoff, sport);
     const weekId = liveWeekIds.get(`${seasonYear}-${weekNumber}`);
     if (!weekId) {
       result.gamesSkipped = (result.gamesSkipped ?? 0) + 1;
@@ -308,7 +316,10 @@ export async function refreshOdds(): Promise<SyncResult> {
  * Pulls final scores. Games an admin corrected by hand are left alone so a
  * lagging feed cannot overwrite the correction.
  */
-export async function refreshScores(daysFrom: number | null = null): Promise<SyncResult> {
+export async function refreshScores(
+  daysFrom: number | null = null,
+  sport: Sport = "nfl",
+): Promise<SyncResult> {
   const result: SyncResult = {
     ok: true,
     gamesSeen: 0,
@@ -325,7 +336,7 @@ export async function refreshScores(daysFrom: number | null = null): Promise<Syn
   let events: ScoreEvent[];
   try {
     events = await getJson<ScoreEvent[]>(
-      ENDPOINTS.scores,
+      scoresEndpoint(sportConfig(sport).oddsApiKey),
       daysFrom === null
         ? { dateFormat: "iso" }
         : { daysFrom: String(daysFrom), dateFormat: "iso" },
@@ -334,14 +345,16 @@ export async function refreshScores(daysFrom: number | null = null): Promise<Syn
     if (daysFrom === null) return { ...result, ok: false, error: describe(first) };
     try {
       // Fall back to the plain call, which still covers live and just-finished.
-      events = await getJson<ScoreEvent[]>(ENDPOINTS.scores, { dateFormat: "iso" });
+      events = await getJson<ScoreEvent[]>(scoresEndpoint(sportConfig(sport).oddsApiKey), {
+        dateFormat: "iso",
+      });
     } catch {
       return { ...result, ok: false, error: describe(first) };
     }
   }
 
   // A closed week is a finished snapshot, so scores stop landing in it too.
-  const liveWeeks = (await listOpenedWeeks())
+  const liveWeeks = (await listOpenedWeeks(sport))
     .filter((week) => week.closed_at === null)
     .map((week) => week.id);
   if (liveWeeks.length === 0) return result;

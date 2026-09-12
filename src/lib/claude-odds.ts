@@ -1,6 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { seasonStartUtc } from "./nfl-week";
+import { ncaafSeasonStartUtc, seasonStartUtc } from "./season-week";
+import type { Sport } from "./sports";
 import { validate, type PullResult } from "./claude-odds-validate";
 
 export type { ProposedGame, PullResult } from "./claude-odds-validate";
@@ -50,6 +51,16 @@ const RECORD_LINES_TOOL = {
               type: "string",
               description: "Kickoff as an ISO 8601 UTC timestamp, e.g. 2026-09-14T17:00:00Z.",
             },
+            home_rank: {
+              type: ["integer", "null"],
+              description:
+                "Home team's position in this week's AP Top 25, or null if unranked. College only.",
+            },
+            away_rank: {
+              type: ["integer", "null"],
+              description:
+                "Away team's position in this week's AP Top 25, or null if unranked. College only.",
+            },
             home_spread: {
               type: "number",
               description:
@@ -59,7 +70,14 @@ const RECORD_LINES_TOOL = {
                 "point spread, never the moneyline or the total.",
             },
           },
-          required: ["away_team", "home_team", "kickoff_iso", "home_spread"],
+          required: [
+            "away_team",
+            "home_team",
+            "kickoff_iso",
+            "home_spread",
+            "home_rank",
+            "away_rank",
+          ],
         },
       },
       source: {
@@ -71,13 +89,20 @@ const RECORD_LINES_TOOL = {
   },
 };
 
-function prompt(seasonYear: number, weekNumber: number): string {
-  const weekStart = new Date(seasonStartUtc(seasonYear) + (weekNumber - 1) * 7 * 86_400_000);
+function prompt(seasonYear: number, weekNumber: number, sport: Sport): string {
+  const start =
+    sport === "ncaaf"
+      ? ncaafSeasonStartUtc(seasonYear) + (weekNumber - 1) * 7 * 86_400_000
+      : seasonStartUtc(seasonYear) + (weekNumber - 1) * 7 * 86_400_000;
+  const weekStart = new Date(start);
+
+  const league = sport === "ncaaf" ? "college football (NCAA FBS)" : "NFL";
+
   return [
-    `Find the point spreads for week ${weekNumber} of the ${seasonYear} NFL season.`,
+    `Find the point spreads for week ${weekNumber} of the ${seasonYear} ${league} season.`,
     `That week begins around ${weekStart.toISOString().slice(0, 10)}.`,
     "",
-    "Search for current NFL odds, then report what you found by calling the",
+    `Search for current ${league} odds, then report what you found by calling the`,
     "record_lines tool exactly once.",
     "",
     "Rules that matter:",
@@ -85,12 +110,28 @@ function prompt(seasonYear: number, weekNumber: number): string {
     "- Give the spread from the home team's perspective. If the home team is",
     "  favored by 3.5, home_spread is -3.5. If the home team is getting 3.5",
     "  points, home_spread is +3.5.",
-    "- Use full team names exactly as the NFL writes them, e.g. Kansas City Chiefs.",
     "- Kickoff times must be UTC. US listings are usually Eastern, so convert.",
     "- Prefer one consistent sportsbook for every game so the numbers agree with",
     "  each other, and name it in the source field.",
     "- Omit a game entirely rather than guessing at a spread you could not find.",
     "- Do not include games from a different week.",
+    ...(sport === "ncaaf"
+      ? [
+          "",
+          "This is college football, so also:",
+          "- Include ONLY games played on the Saturday of that week. No Thursday,",
+          "  Friday or Sunday games.",
+          "- Report the TWENTY MOST INTERESTING games, not the whole slate:",
+          "  ranked teams, conference matchups, and close lines.",
+          "- Give each team's position in that week's AP Top 25 as home_rank and",
+          "  away_rank, or null if the team is unranked.",
+          "- Use the school name as the AP poll writes it, e.g. Ohio State,",
+          "  Michigan, Texas A&M.",
+        ]
+      : [
+          "- Use full team names exactly as the NFL writes them, e.g. Kansas City Chiefs.",
+          "- Leave home_rank and away_rank null: the NFL has no poll.",
+        ]),
   ].join("\n");
 }
 
@@ -105,6 +146,7 @@ function prompt(seasonYear: number, weekNumber: number): string {
 export async function pullLinesWithClaude(
   seasonYear: number,
   weekNumber: number,
+  sport: Sport = "nfl",
 ): Promise<PullResult> {
   const empty: PullResult = { ok: false, error: null, games: [], rejected: [], source: null };
 
@@ -114,7 +156,7 @@ export async function pullLinesWithClaude(
 
   const client = new Anthropic();
   const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: prompt(seasonYear, weekNumber) },
+    { role: "user", content: prompt(seasonYear, weekNumber, sport) },
   ];
 
   try {
@@ -139,7 +181,7 @@ export async function pullLinesWithClaude(
         (block): block is Anthropic.ToolUseBlock =>
           block.type === "tool_use" && block.name === "record_lines",
       );
-      if (call) return validate(call.input, seasonYear, weekNumber);
+      if (call) return validate(call.input, seasonYear, weekNumber, sport);
 
       // A server tool ran out of its turn budget. Push the turn back to resume.
       if (response.stop_reason === "pause_turn") {

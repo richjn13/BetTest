@@ -4,8 +4,11 @@ import { generateJoinCode, hashPin, timingSafeEquals, verifyPin } from "./crypto
 import { env } from "./env";
 import { weekLabel } from "./format";
 import { buildStandings, type Adjustment, type ScoredPick, type Standing } from "./scoring";
+import { SPORTS, type Sport } from "./sports";
+import type { ProposedGame } from "./claude-odds-validate";
 import {
   isGameOpen,
+  type TotalSide,
   type AdminAction,
   type Game,
   type GameCard,
@@ -88,7 +91,7 @@ export async function getGroup(groupId: string): Promise<Group | null> {
   return unwrap(result) as Group | null;
 }
 
-export async function getGroupByJoinCode(joinCode: string): Promise<Group | null> {
+async function getGroupByJoinCode(joinCode: string): Promise<Group | null> {
   const result = await db()
     .from("groups")
     .select("*")
@@ -268,11 +271,16 @@ export async function removeUser(groupId: string, userId: string): Promise<void>
 // ------------------------------------------------------------------- weeks
 
 const WEEK_COLUMNS =
-  "id, season_year, week_number, season_type, label, opened_at, closed_at";
+  "id, season_year, week_number, season_type, label, sport, opened_at, closed_at";
 
-export async function listWeeks(seasonYear?: number): Promise<Week[]> {
-  let query = db().from("weeks").select(WEEK_COLUMNS).order("season_year").order("week_number");
-  if (seasonYear !== undefined) query = query.eq("season_year", seasonYear);
+export async function listWeeks(sport?: Sport): Promise<Week[]> {
+  let query = db()
+    .from("weeks")
+    .select(WEEK_COLUMNS)
+    .order("sport")
+    .order("season_year")
+    .order("week_number");
+  if (sport) query = query.eq("sport", sport);
   return ((unwrap(await query) as Week[]) ?? []);
 }
 
@@ -280,14 +288,15 @@ export async function listWeeks(seasonYear?: number): Promise<Week[]> {
  * The weeks members can see. A week appears only once its lines have been
  * pulled, so next week's games never show up early.
  */
-export async function listOpenedWeeks(): Promise<Week[]> {
-  const result = await db()
+export async function listOpenedWeeks(sport?: Sport): Promise<Week[]> {
+  let query = db()
     .from("weeks")
     .select(WEEK_COLUMNS)
     .not("opened_at", "is", null)
     .order("season_year")
     .order("week_number");
-  return (unwrap(result) as Week[]) ?? [];
+  if (sport) query = query.eq("sport", sport);
+  return (unwrap(await query) as Week[]) ?? [];
 }
 
 /**
@@ -297,19 +306,26 @@ export async function listOpenedWeeks(): Promise<Week[]> {
  * totals on the leaderboard, which reads the full opened list, but its games
  * and picks are no longer browsable.
  */
-export async function listPickableWeeks(): Promise<Week[]> {
-  const result = await db()
+export async function listPickableWeeks(sport?: Sport): Promise<Week[]> {
+  let query = db()
     .from("weeks")
     .select(WEEK_COLUMNS)
     .not("opened_at", "is", null)
     .is("closed_at", null)
     .order("season_year")
     .order("week_number");
-  return (unwrap(result) as Week[]) ?? [];
+  if (sport) query = query.eq("sport", sport);
+  return (unwrap(await query) as Week[]) ?? [];
+}
+
+/** Which sports currently have a week members can see. */
+export async function sportsWithOpenWeeks(): Promise<Sport[]> {
+  const weeks = await listPickableWeeks();
+  return SPORTS.filter((sport) => weeks.some((week) => week.sport === sport));
 }
 
 /** Marks a week as visible. Called the first time lines land in it. */
-export async function openWeek(weekId: string): Promise<void> {
+async function openWeek(weekId: string): Promise<void> {
   unwrap(
     await db()
       .from("weeks")
@@ -348,32 +364,37 @@ export async function getWeek(weekId: string): Promise<Week | null> {
 export async function ensureWeek(
   seasonYear: number,
   weekNumber: number,
+  sport: Sport = "nfl",
 ): Promise<Week> {
   const existing = unwrap(
     await db()
       .from("weeks")
       .select(WEEK_COLUMNS)
+      .eq("sport", sport)
       .eq("season_year", seasonYear)
       .eq("week_number", weekNumber)
       .maybeSingle(),
   ) as Week | null;
   if (existing) return existing;
 
-  const seasonType = weekNumber <= 18 ? "regular" : "postseason";
+  // College has no postseason weeks in this app, and its weeks are plain
+  // numbers rather than named rounds.
+  const seasonType = sport === "nfl" && weekNumber > 18 ? "postseason" : "regular";
   const result = await db()
     .from("weeks")
     .insert({
+      sport,
       season_year: seasonYear,
       week_number: weekNumber,
       season_type: seasonType,
-      label: weekLabel(weekNumber, seasonType),
+      label: sport === "ncaaf" ? `Week ${weekNumber}` : weekLabel(weekNumber, seasonType),
     })
     .select(WEEK_COLUMNS)
     .single();
 
   if (result.error) {
     // Another request created it between the read and the write.
-    if (isUniqueViolation(result.error)) return (await ensureWeek(seasonYear, weekNumber));
+    if (isUniqueViolation(result.error)) return ensureWeek(seasonYear, weekNumber, sport);
     throw new Error(result.error.message);
   }
   return result.data as Week;
@@ -386,8 +407,8 @@ export async function ensureWeek(
  * Only ever returns a week members may see. Null means there is nothing open,
  * which the picks page reports rather than falling back to a closed week.
  */
-export async function getCurrentWeek(): Promise<Week | null> {
-  const candidates = await listPickableWeeks();
+export async function getCurrentWeek(sport?: Sport): Promise<Week | null> {
+  const candidates = await listPickableWeeks(sport);
   if (candidates.length === 0) return null;
 
   const openedIds = new Set(candidates.map((week) => week.id));
@@ -413,7 +434,8 @@ const GAME_COLUMNS =
   "id, week_id, home_team, away_team, kickoff_time, home_spread, spread_source, " +
   "spread_updated_at, spread_frozen_at, frozen_home_spread, final_home_score, " +
   "final_away_score, score_overridden_at, status, odds_api_event_id, spread_locked_at, " +
-  "kickoff_changed_at, last_seen_in_feed_at";
+  "kickoff_changed_at, last_seen_in_feed_at, home_rank, away_rank, " +
+  "total_points, frozen_total, totals_enabled";
 
 export async function getGamesForWeek(weekId: string): Promise<Game[]> {
   const result = await db()
@@ -469,7 +491,7 @@ export async function createGame(input: {
  */
 export async function applyLockedLines(
   weekId: string,
-  games: { awayTeam: string; homeTeam: string; kickoffIso: string; homeSpread: number }[],
+  games: ProposedGame[],
   source: string,
 ): Promise<{
   inserted: number;
@@ -524,6 +546,8 @@ export async function applyLockedLines(
             spread_updated_at: now,
             spread_locked_at: now,
             last_seen_in_feed_at: now,
+            home_rank: game.homeRank,
+            away_rank: game.awayRank,
             ...(timeMoved ? { kickoff_changed_at: now } : {}),
           })
           .eq("id", match.id)
@@ -550,6 +574,8 @@ export async function applyLockedLines(
         spread_updated_at: now,
         spread_locked_at: now,
         last_seen_in_feed_at: now,
+        home_rank: game.homeRank,
+        away_rank: game.awayRank,
       })
       .select("id");
     if (!insert.error) counts.inserted += 1;
@@ -567,6 +593,64 @@ export async function applyLockedLines(
   return counts;
 }
 
+/** Turns the over/under on or off for a game, and sets its number. */
+export async function setGameTotal(
+  gameId: string,
+  total: number | null,
+): Promise<void> {
+  const game = await getGame(gameId);
+  if (!game) throw new AppError("That game no longer exists.");
+  await assertWeekOpen(game.week_id);
+  if (game.spread_frozen_at) {
+    throw new AppError("This game has already kicked off, so its total is fixed.");
+  }
+  if (total !== null && (!Number.isFinite(total) || total <= 0 || total > 150)) {
+    throw new AppError("Enter a total between 0 and 150.");
+  }
+
+  unwrap(
+    await db()
+      .from("games")
+      .update({
+        total_points: total,
+        totals_enabled: total !== null,
+      })
+      .eq("id", gameId)
+      .is("spread_frozen_at", null)
+      .select("id"),
+  );
+}
+
+/** Saves or changes an over/under pick. */
+export async function saveTotalPick(
+  userId: string,
+  gameId: string,
+  side: TotalSide,
+): Promise<void> {
+  const game = await getGame(gameId);
+  if (!game) throw new AppError("That game no longer exists.");
+  await assertWeekOpen(game.week_id);
+  if (!game.totals_enabled) throw new AppError("This game has no over/under.");
+  if (!isGameOpen(game)) throw new AppError("That game has already started.");
+
+  const result = await db()
+    .from("picks")
+    .upsert(
+      {
+        user_id: userId,
+        game_id: gameId,
+        week_id: game.week_id,
+        picked_side: side,
+        market: "total",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,game_id,market" },
+    )
+    .select("id")
+    .single();
+  if (result.error) throw new Error(result.error.message);
+}
+
 export async function deleteGame(gameId: string): Promise<void> {
   unwrap(await db().from("games").delete().eq("id", gameId).select("id"));
 }
@@ -574,16 +658,7 @@ export async function deleteGame(gameId: string): Promise<void> {
 // ------------------------------------------------------------------- picks
 
 const PICK_COLUMNS =
-  "id, user_id, game_id, week_id, picked_side, is_lock, locked_at, points_awarded";
-
-export async function getPicksForUserWeek(userId: string, weekId: string): Promise<Pick[]> {
-  const result = await db()
-    .from("picks")
-    .select(PICK_COLUMNS)
-    .eq("user_id", userId)
-    .eq("week_id", weekId);
-  return (unwrap(result) as Pick[]) ?? [];
-}
+  "id, user_id, game_id, week_id, picked_side, market, is_lock, locked_at, points_awarded";
 
 export async function getPicksForWeek(weekId: string, userIds: string[]): Promise<Pick[]> {
   if (userIds.length === 0) return [];
@@ -610,11 +685,16 @@ export async function getWeekBoard(
   const allPicks = await getPicksForWeek(weekId, memberIds);
 
   const usernames = new Map(members.map((member) => [member.id, member.username]));
+
+  // Spread and total picks live in the same table; the board keeps them apart
+  // so everything downstream can assume a pick means a side.
   const byGame = new Map<string, Pick[]>();
+  const totalsByGame = new Map<string, Pick[]>();
   for (const pick of allPicks) {
-    const list = byGame.get(pick.game_id);
+    const target = pick.market === "total" ? totalsByGame : byGame;
+    const list = target.get(pick.game_id);
     if (list) list.push(pick);
-    else byGame.set(pick.game_id, [pick]);
+    else target.set(pick.game_id, [pick]);
   }
 
   const now = new Date();
@@ -626,6 +706,8 @@ export async function getWeekBoard(
     return {
       game,
       pick: picks.find((pick) => pick.user_id === userId) ?? null,
+      totalPick:
+        (totalsByGame.get(game.id) ?? []).find((pick) => pick.user_id === userId) ?? null,
       isOpen: open,
       // Counts every member's pick, the viewer's included, so the percentage
       // describes the whole group rather than everyone else.
@@ -642,7 +724,7 @@ export async function getWeekBoard(
             .filter((pick) => pick.user_id !== userId)
             .map((pick) => ({
               username: usernames.get(pick.user_id) ?? "?",
-              side: pick.picked_side,
+              side: pick.picked_side as Side,
               isLock: pick.is_lock,
             }))
             .sort((a, b) => a.username.localeCompare(b.username))
@@ -670,9 +752,10 @@ export async function savePick(
         game_id: gameId,
         week_id: game.week_id,
         picked_side: side,
+        market: "spread",
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "user_id,game_id" },
+      { onConflict: "user_id,game_id,market" },
     )
     .select("id")
     .single();
@@ -719,6 +802,7 @@ export async function setLock(userId: string, gameId: string): Promise<void> {
       .select("id")
       .eq("user_id", userId)
       .eq("game_id", gameId)
+      .eq("market", "spread")
       .maybeSingle(),
   );
 
@@ -736,6 +820,7 @@ export async function setLock(userId: string, gameId: string): Promise<void> {
           game_id: gameId,
           week_id: game.week_id,
           picked_side: "home",
+          market: "spread",
           is_lock: true,
         })
         .select("id")
@@ -754,6 +839,7 @@ export async function clearLock(userId: string, gameId: string): Promise<void> {
       .update({ is_lock: false })
       .eq("user_id", userId)
       .eq("game_id", gameId)
+      .eq("market", "spread")
       .select("id"),
   );
 }

@@ -1,6 +1,6 @@
 import { formatPoints } from "@/lib/format";
 import { computeWeekStats, formatRecord, type StatGame, type StatPick } from "@/lib/week-stats";
-import { effectiveSpread, type GameCard } from "@/lib/types";
+import { effectiveSpread, type GameCard, type Side } from "@/lib/types";
 
 /**
  * End-of-week readout, shown once every game in the week has a result. Your
@@ -22,7 +22,7 @@ export function WeekSummary({ cards, weekLabel }: { cards: GameCard[]; weekLabel
     .filter((card) => card.pick !== null)
     .map((card) => ({
       gameId: card.game.id,
-      side: card.pick!.picked_side,
+      side: card.pick!.picked_side as Side,
       isLock: card.pick!.is_lock,
       points: card.pick!.points_awarded === null ? null : Number(card.pick!.points_awarded),
     }));

@@ -1,13 +1,14 @@
 import "server-only";
 import { db, unwrap } from "./db";
-import { gradePick, type GradableGame } from "./scoring";
-import type { Game, Side } from "./types";
+import { gradePick, gradeTotalPick, type GradableGame } from "./scoring";
+import type { Game, Side, TotalSide } from "./types";
 
 const GAME_COLUMNS =
   "id, week_id, home_team, away_team, kickoff_time, home_spread, spread_source, " +
   "spread_updated_at, spread_frozen_at, frozen_home_spread, final_home_score, " +
   "final_away_score, score_overridden_at, status, odds_api_event_id, spread_locked_at, " +
-  "kickoff_changed_at, last_seen_in_feed_at";
+  "kickoff_changed_at, last_seen_in_feed_at, home_rank, away_rank, " +
+  "total_points, frozen_total, totals_enabled";
 
 /**
  * Freezes the line on every game whose kickoff has passed. The frozen value is
@@ -29,6 +30,7 @@ export async function freezeKickedOffSpreads(now: Date = new Date()): Promise<nu
       .from("games")
       .update({
         frozen_home_spread: game.home_spread,
+        frozen_total: game.total_points,
         spread_frozen_at: now.toISOString(),
         // A game that reached kickoff is under way unless it was called off.
         status: game.status === "scheduled" ? "live" : game.status,
@@ -62,7 +64,7 @@ export async function gradeResolvedGames(gameIds?: string[]): Promise<number> {
   const picks = (unwrap(
     await db()
       .from("picks")
-      .select("id, game_id, picked_side, is_lock, points_awarded")
+      .select("id, game_id, picked_side, market, is_lock, points_awarded")
       .in(
         "game_id",
         games.map((game) => game.id),
@@ -70,18 +72,31 @@ export async function gradeResolvedGames(gameIds?: string[]): Promise<number> {
   ) as {
     id: string;
     game_id: string;
-    picked_side: Side;
+    picked_side: Side | TotalSide;
+    market: "spread" | "total";
     is_lock: boolean;
     points_awarded: number | null;
   }[]) ?? [];
 
-  const byId = new Map(games.map((game) => [game.id, toGradable(game)]));
+  const byId = new Map(games.map((game) => [game.id, game]));
 
   let updated = 0;
   for (const pick of picks) {
-    const game = byId.get(pick.game_id);
-    if (!game) continue;
-    const graded = gradePick({ pickedSide: pick.picked_side, isLock: pick.is_lock }, game);
+    const raw = byId.get(pick.game_id);
+    if (!raw) continue;
+
+    const graded =
+      pick.market === "total"
+        ? gradeTotalPick(pick.picked_side as TotalSide, {
+            status: raw.status,
+            finalHomeScore: raw.final_home_score,
+            finalAwayScore: raw.final_away_score,
+            frozenTotal: raw.spread_frozen_at ? raw.frozen_total : raw.total_points,
+          })
+        : gradePick(
+            { pickedSide: pick.picked_side as Side, isLock: pick.is_lock },
+            toGradable(raw),
+          );
     const points = graded === null ? null : graded.points;
     const current = pick.points_awarded === null ? null : Number(pick.points_awarded);
     if (current === points) continue;

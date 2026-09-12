@@ -17,7 +17,11 @@ export function initialSelections(cards: GameCard[]): Selections {
   return Object.fromEntries(
     cards.map((card) => [
       card.game.id,
-      { side: card.pick?.picked_side ?? null, isLock: card.pick?.is_lock ?? false },
+      {
+        // The board's own pick is always a spread pick; totals are separate.
+        side: (card.pick?.picked_side as Side | undefined) ?? null,
+        isLock: card.pick?.is_lock ?? false,
+      },
     ]),
   );
 }

@@ -4,6 +4,8 @@
  */
 
 export type Side = "home" | "away";
+export type TotalSide = "over" | "under";
+export type Market = "spread" | "total";
 
 export type GameStatus = "scheduled" | "live" | "final" | "postponed" | "canceled";
 
@@ -22,8 +24,8 @@ export type GradablePick = {
 
 export type PickResult = "win" | "loss" | "push";
 
-export const POINTS_WIN = 1;
-export const POINTS_LOCK_WIN = 2;
+const POINTS_WIN = 1;
+const POINTS_LOCK_WIN = 2;
 
 /**
  * How the home team did against its own line. Positive means the home team
@@ -54,7 +56,7 @@ export function winningSide(game: GradableGame): Side | "push" | null {
 }
 
 /** Games that never resolved are dropped from the week rather than scored as losses. */
-export function isExcluded(game: GradableGame): boolean {
+function isExcluded(game: GradableGame): boolean {
   return game.status === "postponed" || game.status === "canceled";
 }
 
@@ -75,6 +77,52 @@ export function gradePick(
   if (winner !== pick.pickedSide) return { points: 0, result: "loss" };
 
   return { points: pick.isLock ? POINTS_LOCK_WIN : POINTS_WIN, result: "win" };
+}
+
+// --------------------------------------------------------------------- totals
+
+/**
+ * Grading an over/under. Kept beside the spread grader rather than folded into
+ * it: the two markets share a shape but nothing else, and the spread path is
+ * what every point in the pool has depended on so far.
+ */
+export function winningTotal(
+  homeScore: number,
+  awayScore: number,
+  line: number,
+): TotalSide | "push" {
+  const combined = homeScore + awayScore;
+  if (combined > line) return "over";
+  if (combined < line) return "under";
+  return "push";
+}
+
+export type GradableTotal = {
+  status: GameStatus;
+  finalHomeScore: number | null;
+  finalAwayScore: number | null;
+  /** The total picks are graded against: frozen at kickoff. */
+  frozenTotal: number | null;
+};
+
+/**
+ * Points for one over/under pick. A total is worth 1 and is never the lock, so
+ * it cannot be doubled.
+ */
+export function gradeTotalPick(
+  pickedSide: TotalSide,
+  game: GradableTotal,
+): { points: number; result: PickResult } | null {
+  if (game.status === "postponed" || game.status === "canceled") return null;
+  if (game.status !== "final") return null;
+  if (game.finalHomeScore === null || game.finalAwayScore === null) return null;
+  if (game.frozenTotal === null) return null;
+
+  const outcome = winningTotal(game.finalHomeScore, game.finalAwayScore, game.frozenTotal);
+  if (outcome === "push") return { points: 0, result: "push" };
+  return outcome === pickedSide
+    ? { points: POINTS_WIN, result: "win" }
+    : { points: 0, result: "loss" };
 }
 
 // ------------------------------------------------------------------ standings
@@ -186,7 +234,7 @@ export function buildStandings(
   return [...byUser.values()].sort(compareStandings);
 }
 
-export function compareStandings(a: Standing, b: Standing): number {
+function compareStandings(a: Standing, b: Standing): number {
   if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
   if (b.correctNonLock !== a.correctNonLock) return b.correctNonLock - a.correctNonLock;
   return a.userId.localeCompare(b.userId);

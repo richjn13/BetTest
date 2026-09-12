@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ENDPOINTS, oddsApiUrl, readableError } from "../odds-url";
+import {
+  SPORTS_ENDPOINT,
+  oddsApiUrl,
+  oddsEndpoint,
+  readableError,
+  scoresEndpoint,
+} from "../odds-url";
 
 const strip = (url: URL) => `${url.origin}${url.pathname}`;
 
@@ -7,28 +13,34 @@ describe("oddsApiUrl", () => {
   it("puts the sports listing at the API root, not under a sport", () => {
     // The bug this guards: a single sport-scoped base URL produced
     // /v4/sports/americanfootball_nfl/sports, which is a 404.
-    expect(strip(oddsApiUrl(ENDPOINTS.sports, "k"))).toBe(
+    expect(strip(oddsApiUrl(SPORTS_ENDPOINT, "k"))).toBe(
       "https://api.the-odds-api.com/v4/sports",
     );
   });
 
   it("puts odds and scores under the NFL sport", () => {
-    expect(strip(oddsApiUrl(ENDPOINTS.odds, "k"))).toBe(
+    expect(strip(oddsApiUrl(oddsEndpoint("americanfootball_nfl"), "k"))).toBe(
       "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds",
     );
-    expect(strip(oddsApiUrl(ENDPOINTS.scores, "k"))).toBe(
+    expect(strip(oddsApiUrl(scoresEndpoint("americanfootball_nfl"), "k"))).toBe(
       "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/scores",
     );
   });
 
   it("sends the key as a query parameter, escaped", () => {
-    const url = oddsApiUrl(ENDPOINTS.odds, "abc/123+xyz");
+    const url = oddsApiUrl(oddsEndpoint("americanfootball_nfl"), "abc/123+xyz");
     expect(url.searchParams.get("apiKey")).toBe("abc/123+xyz");
     expect(url.toString()).not.toContain("abc/123+xyz");
   });
 
+  it("names the sport in the path, so college and pro cannot be confused", () => {
+    expect(strip(oddsApiUrl(oddsEndpoint("americanfootball_ncaaf"), "k"))).toBe(
+      "https://api.the-odds-api.com/v4/sports/americanfootball_ncaaf/odds",
+    );
+  });
+
   it("carries extra parameters through", () => {
-    const url = oddsApiUrl(ENDPOINTS.odds, "k", { regions: "us", markets: "spreads" });
+    const url = oddsApiUrl(oddsEndpoint("americanfootball_nfl"), "k", { regions: "us", markets: "spreads" });
     expect(url.searchParams.get("regions")).toBe("us");
     expect(url.searchParams.get("markets")).toBe("spreads");
   });

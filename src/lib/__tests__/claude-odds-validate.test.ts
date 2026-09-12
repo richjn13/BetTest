@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validate } from "../claude-odds-validate";
-import { seasonStartUtc } from "../nfl-week";
+import { seasonStartUtc } from "../season-week";
 
 // Week 2 of 2026 opens a week after the season start.
 const SEASON = 2026;

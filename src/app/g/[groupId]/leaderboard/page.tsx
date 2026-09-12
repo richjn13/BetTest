@@ -1,4 +1,5 @@
 import { Avatar } from "@/components/Avatar";
+import { sportConfig } from "@/lib/sports";
 import { requireViewer } from "@/lib/auth";
 import { getStandings } from "@/lib/queries";
 import { formatPoints } from "@/lib/format";
@@ -125,7 +126,8 @@ export default async function LeaderboardPage({ params }: { params: { groupId: s
                   className="px-3 py-2 text-right text-xs font-semibold uppercase
                              tracking-wide text-muted"
                 >
-                  {week.season_type === "regular" ? `Wk ${week.week_number}` : week.label}
+                  {/* Both sports number their weeks, so say which is which. */}
+                  {sportConfig(week.sport).short} {week.week_number}
                 </th>
               ))}
             </tr>

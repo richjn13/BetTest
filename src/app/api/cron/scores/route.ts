@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
+import { sportsWithOpenWeeks } from "@/lib/queries";
 import { runRefresh } from "@/lib/refresh";
 
 export const dynamic = "force-dynamic";
@@ -19,21 +20,39 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const result = await runRefresh("scores");
-
-  return NextResponse.json(
-    {
+  // One pass per sport that currently has an open week. A sport with nothing
+  // open costs nothing, since the check is a database read.
+  let sports;
+  try {
+    sports = await sportsWithOpenWeeks();
+  } catch (error) {
+    // Without this the route answers an empty 500 that says nothing.
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error("cron: could not read open weeks", error);
+    return NextResponse.json(
+      { ok: false, error: `Could not read open weeks: ${reason}`, at: new Date().toISOString() },
+      { status: 500 },
+    );
+  }
+  const runs = [];
+  for (const sport of sports) {
+    const result = await runRefresh("scores", sport);
+    runs.push({
+      sport,
       ok: result.ok,
       // True when no game was waiting on a score, so no API call was spent.
       skipped: result.skipped,
-      // The open week the run was fetching for, if any.
       waitingOn: result.waitingOn,
       degraded: result.degraded,
       frozen: result.frozen,
       scoresUpdated: result.scoresUpdated,
       graded: result.graded,
-      at: new Date().toISOString(),
-    },
-    { status: result.databaseError ? 500 : 200 },
+    });
+  }
+
+  const failed = runs.some((run) => !run.ok);
+  return NextResponse.json(
+    { ok: !failed, runs, at: new Date().toISOString() },
+    { status: 200 },
   );
 }

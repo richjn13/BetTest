@@ -20,8 +20,10 @@ import {
   regenerateJoinCode,
   removeUser,
   setAdmin,
+  setGameTotal,
   setWeekClosed,
 } from "@/lib/queries";
+import { isSport, sportLabel, type Sport } from "@/lib/sports";
 import type { GameStatus, Side } from "@/lib/types";
 
 import type { AdminState } from "./state";
@@ -441,17 +443,19 @@ export async function pullLinesAction(
   const groupId = text(form, "groupId");
   const seasonYear = optionalNumber(form, "seasonYear");
   const weekNumber = optionalNumber(form, "weekNumber");
+  const sportInput = text(form, "sport");
+  const sport: Sport = isSport(sportInput) ? sportInput : "nfl";
 
   return run(groupId, async (actor) => {
     if (!seasonYear || !weekNumber) throw new AppError("Pick a season and week.");
     if (weekNumber < 1 || weekNumber > 22) throw new AppError("Week must be between 1 and 22.");
 
-    const pulled = await pullLinesWithClaude(seasonYear, weekNumber);
+    const pulled = await pullLinesWithClaude(seasonYear, weekNumber, sport);
     if (!pulled.ok) {
       throw new AppError(pulled.error ?? "The pull came back empty.");
     }
 
-    const week = await ensureWeek(seasonYear, weekNumber);
+    const week = await ensureWeek(seasonYear, weekNumber, sport);
     const source = pulled.source ? `claude:${pulled.source}` : "claude";
     const counts = await applyLockedLines(week.id, pulled.games, source);
 
@@ -460,8 +464,9 @@ export async function pullLinesAction(
       actorUserId: actor.id,
       actorUsername: actor.username,
       action: "pull_lines",
-      note: `Lines pulled and locked for ${week.label}.`,
+      note: `Lines pulled and locked for ${sportLabel(sport)} ${week.label}.`,
       details: {
+        sport,
         source: pulled.source,
         accepted: pulled.games.length,
         rejected: pulled.rejected,
@@ -493,6 +498,38 @@ export async function pullLinesAction(
         : "";
 
     return `${parts.join(", ")}. Check the slate below before anyone picks.${moved}${missing}${rejected}`;
+  });
+}
+
+/** Turns the over/under on for a game, or off. */
+export async function setTotalAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const gameId = text(form, "gameId");
+  const remove = text(form, "remove") === "true";
+  const total = optionalNumber(form, "total");
+
+  return run(groupId, async (actor) => {
+    const game = await getGame(gameId);
+    if (!game) throw new AppError("That game no longer exists.");
+    if (!remove && total === null) throw new AppError("Enter the over/under number.");
+
+    await setGameTotal(gameId, remove ? null : total);
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: remove ? "disable_total" : "enable_total",
+      gameId,
+      note: remove ? "Over/under removed." : `Over/under set to ${total}.`,
+      details: { matchup: `${game.away_team} at ${game.home_team}`, total: remove ? null : total },
+    });
+
+    return remove
+      ? "Over/under removed from that game."
+      : `Over/under set to ${total}. Members can now pick it.`;
   });
 }
 

@@ -1,12 +1,44 @@
-# NFL Pick'em
+# Pick'em
 
-A private, friends-only pick'em pool. Members join with a code, pick every game
-against the live spread, designate one lock a week worth double, and follow a
-season-long leaderboard.
+A private, friends-only pick'em pool covering **NFL** and **NCAA** college
+football. Members join with a code, pick games against the spread, designate one
+lock a week worth double, and follow a season-long leaderboard.
 
 **You can set this up entirely from an iPad, in Safari, with no terminal.** The
 guide below is written for that. If you are on a laptop and want a local dev
 server, skip to *Running it on a computer* at the end.
+
+## Two competitions
+
+A toggle at the top of the picks page switches between **NFL** and **NCAA**. It
+only appears when both have a week open, so a pool running one sport never sees
+a control with a single option.
+
+| | NFL | NCAA |
+| --- | --- | --- |
+| Weeks | 1-18, plus playoffs to 22 | 1-16 |
+| Games | Every game on the slate | Saturday only |
+| Slate size | The full week | The twenty most interesting games, pulled with AP rankings so you can choose |
+| Rankings | None | Shown as **#4** beside a ranked team |
+
+Weeks belong to a sport, so NFL week 3 and NCAA week 3 are separate weeks with
+separate picks. The leaderboard carries a column for each, labelled with the
+competition.
+
+## Over/unders
+
+**Off by default.** A game has no total until an admin adds one under
+**Admin → Games**: type the number, press Add O/U, and members get an
+over/under row on that game alongside the spread.
+
+- A correct over/under is worth **1 point**. It is never the lock, so it cannot
+  be doubled.
+- A push scores 0, as with the spread.
+- The total freezes at kickoff on the same rule as the line.
+- Remove it and the row disappears again.
+
+This is deliberately manual. You look the number up and enter it, so the app
+never spends an API call on a market you might not use.
 
 ## How the pool works
 

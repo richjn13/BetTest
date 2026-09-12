@@ -9,13 +9,17 @@
  * Kept free of server imports so the rules can be tested directly.
  */
 import { NFL_TEAMS } from "./teams";
-import { weekForKickoff } from "./nfl-week";
+import { isSaturdayGame, weekForSport } from "./season-week";
+import { sportConfig, type Sport } from "./sports";
 
 export type ProposedGame = {
   awayTeam: string;
   homeTeam: string;
   kickoffIso: string;
   homeSpread: number;
+  /** Poll position, college only. Null when unranked or not applicable. */
+  homeRank: number | null;
+  awayRank: number | null;
 };
 
 export type PullResult = {
@@ -33,16 +37,31 @@ const TEAMS_BY_LOWER = new Map(NFL_TEAMS.map((team) => [team.toLowerCase(), team
 /** Beyond this, a line is a transcription error rather than a real number. */
 const MAX_PLAUSIBLE_SPREAD = 30;
 
+/** College team names come from the feed, so only the shape is checked. */
+function readTeamName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  const trimmed = name.trim();
+  return trimmed.length >= 2 && trimmed.length <= 60 ? trimmed : null;
+}
+
 function resolveTeam(name: unknown): string | null {
   if (typeof name !== "string") return null;
   return TEAMS_BY_LOWER.get(name.trim().toLowerCase()) ?? null;
+}
+
+function readRank(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 25) return null;
+  return parsed;
 }
 
 export function validate(
   input: unknown,
   seasonYear: number,
   weekNumber: number,
+  sport: Sport = "nfl",
 ): PullResult {
+  const config = sportConfig(sport);
   const result: PullResult = { ok: true, error: null, games: [], rejected: [], source: null };
 
   const payload = input as { games?: unknown[]; source?: unknown };
@@ -57,10 +76,15 @@ export function validate(
     const row = raw as Record<string, unknown>;
     const label = `${String(row.away_team)} at ${String(row.home_team)}`;
 
-    const awayTeam = resolveTeam(row.away_team);
-    const homeTeam = resolveTeam(row.home_team);
+    // The NFL has thirty-two known names worth checking against. College has
+    // well over a hundred that change, so there the feed is the authority and
+    // only the shape of the name is checked.
+    const awayTeam = sport === "nfl" ? resolveTeam(row.away_team) : readTeamName(row.away_team);
+    const homeTeam = sport === "nfl" ? resolveTeam(row.home_team) : readTeamName(row.home_team);
     if (!awayTeam || !homeTeam) {
-      result.rejected.push(`${label}: not a recognized NFL team`);
+      result.rejected.push(
+        `${label}: ${sport === "nfl" ? "not a recognized NFL team" : "team name could not be read"}`,
+      );
       continue;
     }
     if (awayTeam === homeTeam) {
@@ -73,10 +97,15 @@ export function validate(
       result.rejected.push(`${label}: kickoff time could not be read`);
       continue;
     }
+    if (config.saturdayOnly && !isSaturdayGame(kickoff)) {
+      result.rejected.push(`${label}: not a Saturday game`);
+      continue;
+    }
+
     // Ask the same function that assigns every other game its week. A fixed
     // day window around the week's nominal start would reject the Super Bowl,
     // which sits two weeks out because of the bye before it.
-    const placed = weekForKickoff(kickoff, seasonYear);
+    const placed = weekForSport(kickoff, sport, seasonYear);
     if (placed.weekNumber !== weekNumber) {
       result.rejected.push(
         `${label}: kickoff ${kickoff.toISOString().slice(0, 10)} lands in week ` +
@@ -112,6 +141,8 @@ export function validate(
       homeTeam,
       kickoffIso: kickoff.toISOString(),
       homeSpread: spread,
+      homeRank: config.ranked ? readRank(row.home_rank) : null,
+      awayRank: config.ranked ? readRank(row.away_rank) : null,
     });
   }
 

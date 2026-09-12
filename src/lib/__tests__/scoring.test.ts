@@ -3,7 +3,9 @@ import {
   buildStandings,
   coverMargin,
   gradePick,
+  gradeTotalPick,
   winningSide,
+  winningTotal,
   type GradableGame,
 } from "../scoring";
 
@@ -162,3 +164,51 @@ describe("buildStandings", () => {
     expect(standings.every((s) => s.totalPoints === 0)).toBe(true);
   });
 });
+
+describe("winningTotal", () => {
+  it("compares the combined score against the line", () => {
+    expect(winningTotal(24, 21, 44.5)).toBe("over");
+    expect(winningTotal(17, 14, 44.5)).toBe("under");
+  });
+
+  it("returns a push when the combined score lands on the number", () => {
+    expect(winningTotal(24, 20, 44)).toBe("push");
+  });
+});
+
+describe("gradeTotalPick", () => {
+  const final = (home: number, away: number, total: number | null) => ({
+    status: "final" as const,
+    finalHomeScore: home,
+    finalAwayScore: away,
+    frozenTotal: total,
+  });
+
+  it("awards a point for a correct over or under", () => {
+    expect(gradeTotalPick("over", final(24, 21, 44.5))).toEqual({ points: 1, result: "win" });
+    expect(gradeTotalPick("under", final(17, 14, 44.5))).toEqual({ points: 1, result: "win" });
+  });
+
+  it("awards nothing for a wrong call", () => {
+    expect(gradeTotalPick("under", final(24, 21, 44.5))).toEqual({ points: 0, result: "loss" });
+  });
+
+  it("never pays more than one, so a total cannot be doubled", () => {
+    const graded = gradeTotalPick("over", final(35, 35, 44.5));
+    expect(graded?.points).toBe(1);
+  });
+
+  it("scores a push at zero", () => {
+    expect(gradeTotalPick("over", final(24, 20, 44))).toEqual({ points: 0, result: "push" });
+    expect(gradeTotalPick("under", final(24, 20, 44))).toEqual({ points: 0, result: "push" });
+  });
+
+  it("leaves an unfinished or excluded game ungraded", () => {
+    expect(gradeTotalPick("over", { ...final(24, 21, 44.5), status: "live" })).toBeNull();
+    expect(gradeTotalPick("over", { ...final(24, 21, 44.5), status: "postponed" })).toBeNull();
+  });
+
+  it("cannot grade without a frozen total", () => {
+    expect(gradeTotalPick("over", final(24, 21, null))).toBeNull();
+  });
+})

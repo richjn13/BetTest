@@ -47,7 +47,7 @@ export function getSession(): Session {
 }
 
 /** Only callable from a server action or route handler. */
-export function writeSession(session: Session): void {
+function writeSession(session: Session): void {
   cookies().set(COOKIE_NAME, encode(session), {
     httpOnly: true,
     sameSite: "lax",
