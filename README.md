@@ -571,12 +571,15 @@ then *Hoosiers*, then *vs Ohio State*. Result sentences and the consensus row
 use the school too, since a college abbreviation is built from the mascot and
 says nothing. The NFL is unchanged, because everyone knows the Chiefs.
 
+**A finished game fills the whole card**, green when you won it and red when
+you lost, with a solid bar down the side as well. A result is settled, and it
+says so at arm's length.
+
 **While a game is on, your pick shades itself.** The side you took turns green
 when it is covering the line right now and red when it is not, and the pill at
-the top of the card says *Up 7 · so far* or *Down 7 · so far*. Both the shading
-and the card's left edge use a dashed border rather than the solid one a
-finished game gets, because dashed reads as unfinished without a sentence
-explaining it. The numbers are against the line, not the scoreboard: a team
+the top of the card says *Up 7 · so far* or *Down 7 · so far*. Nothing fills while a game is on -- only the box you
+picked is tinted, with dashed borders rather than the solid filled card a
+result gets -- so a scoreline in progress can never be mistaken for a verdict. The numbers are against the line, not the scoreboard: a team
 leading by three while giving seven is down four.
 
 Only the side you picked is shaded. The question the colour answers is "how am

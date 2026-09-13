@@ -217,15 +217,18 @@ function GameRow({
     pickedSide: selection?.side ?? null,
   });
 
-  // A settled game reads at a glance from the card's left edge: a solid bar,
-  // green for a win, red for a loss, neutral for a push or a game you sat out.
-  // A game still being played gets the same colours as a dashed bar, because
-  // dashed reads as "not finished" in a way no wording has to explain.
-  const edge =
+  // A settled game is settled, so it says so with the whole card: filled green
+  // for a win, red for a loss, and a solid bar down the side on top of that.
+  // A game still being played never fills -- it only ever tints the side you
+  // picked, with dashed borders -- so a result and a scoreline in progress can
+  // never be mistaken for one another at arm's length.
+  const shell =
     outcome.verdict === "win"
-      ? "border-l-4 border-l-[rgb(var(--win))]"
+      ? "border-[rgb(var(--win))]/45 bg-[rgb(var(--win))]/[0.13] " +
+        "border-l-4 border-l-[rgb(var(--win))]"
       : outcome.verdict === "loss"
-        ? "border-l-4 border-l-[rgb(var(--loss))]"
+        ? "border-[rgb(var(--loss))]/45 bg-[rgb(var(--loss))]/[0.11] " +
+          "border-l-4 border-l-[rgb(var(--loss))]"
         : outcome.verdict === "push"
           ? "border-l-4 border-l-edge"
           : standing === null
@@ -244,7 +247,7 @@ function GameRow({
         : "text-muted";
 
   return (
-    <li className={`card overflow-hidden ${edge}`}>
+    <li className={`card overflow-hidden ${shell}`}>
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5 text-xs">
         {/* Just when it starts. A kickoff that moved is the admin's problem,
             and colouring it red here only ever made people think something was
@@ -315,7 +318,13 @@ function GameRow({
       />
 
       {outcome.line && (
-        <div className="border-t border-edge bg-surface/60 px-3 py-2.5 text-xs">
+        <div
+          className={`border-t px-3 py-2.5 text-xs ${
+            outcome.verdict === "win" || outcome.verdict === "loss"
+              ? "border-white/10"
+              : "border-edge bg-surface/60"
+          }`}
+        >
           <p className="font-medium">{outcome.line}</p>
           {outcome.effect && <p className={`mt-0.5 ${verdictTone}`}>{outcome.effect}</p>}
         </div>
