@@ -375,6 +375,15 @@ async function checkOddsFeed(): Promise<Check[]> {
         status: probe.ok ? (low as Status) : "fail",
         detail,
       },
+      // With two people's keys configured, each needs its own line: "it works"
+      // is not an answer when one of them is out.
+      ...(probe.keys.length > 1
+        ? probe.keys.map((entry) => ({
+            label: `Key ${entry.label}`,
+            status: (entry.ok ? "ok" : "fail") as Status,
+            detail: entry.message,
+          }))
+        : []),
     ];
   } catch (error) {
     return [

@@ -46,6 +46,13 @@ export async function refreshScoresIfStale(): Promise<LiveCheck> {
     return { ran: [], lastChecked: null };
   }
 
+  // Nothing to do until the interval is up, and deciding that from one row is
+  // cheaper than asking which games are waiting on a score. Most page loads
+  // stop here.
+  if (lastChecked !== null && Date.now() - lastChecked.getTime() < MINUTES * 60_000) {
+    return { ran: [], lastChecked };
+  }
+
   let waiting: Sport[] = [];
   try {
     const sports = await sportsWithOpenWeeks();

@@ -42,7 +42,13 @@ export type RefreshResult = {
  * kickoff and the next run. On a 15-minute schedule that window is minutes
  * wide. On a weekly schedule it is a week wide.
  */
-export type RefreshMode = "full" | "scores" | "odds";
+/**
+ * What a run is for. There used to be a "full" mode that did both at once,
+ * reached only by a scheduled endpoint that no scheduler called; spreads and
+ * scores are wanted at different moments and by different buttons, so they are
+ * two modes and nothing asks for both.
+ */
+export type RefreshMode = "scores" | "odds";
 
 /**
  * @param weekId Restricts the run to one week, for a button that says which
@@ -51,7 +57,7 @@ export type RefreshMode = "full" | "scores" | "odds";
  *   the usual reason is a game the shortcut decided was not worth asking about.
  */
 export async function runRefresh(
-  mode: RefreshMode = "full",
+  mode: RefreshMode,
   sport: Sport = "nfl",
   weekId: string | null = null,
 ): Promise<RefreshResult> {
@@ -80,11 +86,10 @@ export async function runRefresh(
     return { ...result, ok: false };
   }
 
-  // 2. Pull current spreads and any newly scheduled games. Skipped in scores
-  // mode, which exists so a frequent schedule costs one API call instead of
-  // two -- spreads barely move once a week is pulled and locked, but scores
-  // change every few minutes while games are on.
-  if (mode === "full" || mode === "odds") {
+  // 2. Pull current spreads and any newly scheduled games. Only in odds mode:
+  // spreads barely move once a week is pulled and locked, while scores change
+  // every few minutes during a game, so a frequent run asks for scores alone.
+  if (mode === "odds") {
     const odds = await refreshOdds(sport, weekId ? [weekId] : null);
     result.gamesInserted = odds.gamesInserted;
     result.gamesAdopted = odds.gamesAdopted ?? 0;
@@ -150,9 +155,9 @@ export async function runRefresh(
       }
 
       // Everything the page could read is in. Only ask the feed if something
-      // is still outstanding.
+      // is still outstanding -- including for a hand-pressed run, which was
+      // forced above precisely because the page might not have been set up.
       pending = await pendingScores(new Date(), sport);
-      if (weekId) pending = { ...pending, count: Math.max(0, pending.count) };
     } catch (error) {
       result.degraded.push(describe(error));
     }
@@ -167,7 +172,9 @@ export async function runRefresh(
       sport,
       weekId ? [weekId] : null,
     );
-    result.scoresUpdated = scores.scoresUpdated;
+    // Added, not assigned: the page may already have written some, and
+    // overwriting the count here reported those as never having happened.
+    result.scoresUpdated += scores.scoresUpdated;
     if (scores.error) {
       result.scoresError = scores.error;
       result.degraded.push(scores.error);

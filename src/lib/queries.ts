@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { db, unwrap } from "./db";
 import { generateJoinCode, hashPin, timingSafeEquals, verifyPin } from "./crypto";
 import { env } from "./env";
@@ -89,7 +90,7 @@ function isUniqueViolation(error: { code?: string } | null): boolean {
   return error?.code === "23505";
 }
 
-export async function getGroup(groupId: string): Promise<Group | null> {
+async function getGroupOnce(groupId: string): Promise<Group | null> {
   const result = await db().from("groups").select("*").eq("id", groupId).maybeSingle();
   return unwrap(result) as Group | null;
 }
@@ -221,12 +222,12 @@ export async function signIn(
   return { group, user };
 }
 
-export async function getUser(userId: string): Promise<User | null> {
+async function getUserOnce(userId: string): Promise<User | null> {
   const result = await db().from("users").select(USER_COLUMNS).eq("id", userId).maybeSingle();
   return unwrap(result) as User | null;
 }
 
-export async function getMembers(groupId: string): Promise<User[]> {
+async function getMembersOnce(groupId: string): Promise<User[]> {
   const result = await db()
     .from("users")
     .select(USER_COLUMNS)
@@ -276,7 +277,7 @@ export async function removeUser(groupId: string, userId: string): Promise<void>
 const WEEK_COLUMNS =
   "id, season_year, week_number, season_type, label, sport, opened_at, closed_at, hidden_at";
 
-export async function listWeeks(sport?: Sport): Promise<Week[]> {
+async function listWeeksOnce(sport?: Sport): Promise<Week[]> {
   let query = db()
     .from("weeks")
     .select(WEEK_COLUMNS)
@@ -291,7 +292,7 @@ export async function listWeeks(sport?: Sport): Promise<Week[]> {
  * The weeks members can see. A week appears only once its lines have been
  * pulled, so next week's games never show up early.
  */
-export async function listOpenedWeeks(sport?: Sport): Promise<Week[]> {
+async function listOpenedWeeksOnce(sport?: Sport): Promise<Week[]> {
   let query = db()
     .from("weeks")
     .select(WEEK_COLUMNS)
@@ -310,7 +311,7 @@ export async function listOpenedWeeks(sport?: Sport): Promise<Week[]> {
  * totals on the leaderboard, which reads the full opened list, but its games
  * and picks are no longer browsable.
  */
-export async function listPickableWeeks(sport?: Sport): Promise<Week[]> {
+async function listPickableWeeksOnce(sport?: Sport): Promise<Week[]> {
   let query = db()
     .from("weeks")
     .select(WEEK_COLUMNS)
@@ -331,7 +332,7 @@ export async function listPickableWeeks(sport?: Sport): Promise<Week[]> {
  * pool talks about afterwards. Only an unpulled week is invisible, because
  * that one genuinely does not exist yet.
  */
-export async function listViewableWeeks(sport?: Sport): Promise<Week[]> {
+async function listViewableWeeksOnce(sport?: Sport): Promise<Week[]> {
   let query = db()
     .from("weeks")
     .select(WEEK_COLUMNS)
@@ -344,7 +345,7 @@ export async function listViewableWeeks(sport?: Sport): Promise<Week[]> {
 }
 
 /** Which sports currently have a week that still accepts picks. */
-export async function sportsWithOpenWeeks(): Promise<Sport[]> {
+async function sportsWithOpenWeeksOnce(): Promise<Sport[]> {
   const weeks = await listPickableWeeks();
   return SPORTS.filter((sport) => weeks.some((week) => week.sport === sport));
 }
@@ -354,7 +355,7 @@ export async function sportsWithOpenWeeks(): Promise<Sport[]> {
  * whose last week has been closed should not vanish from the app the moment
  * it ends; that is exactly when people want to read it.
  */
-export async function sportsWithViewableWeeks(): Promise<Sport[]> {
+async function sportsWithViewableWeeksOnce(): Promise<Sport[]> {
   const weeks = await listViewableWeeks();
   return SPORTS.filter((sport) => weeks.some((week) => week.sport === sport));
 }
@@ -508,6 +509,27 @@ export async function claimSlot(key: string, everyMs: number): Promise<boolean> 
     .select("key");
   if (claim.error) throw new Error(claim.error.message);
   return (claim.data?.length ?? 0) > 0;
+}
+
+/** Stores a small named value, for something a page needs without fetching it. */
+export async function recordValue(key: string, value: unknown): Promise<void> {
+  unwrap(
+    await db()
+      .from("app_state")
+      .upsert(
+        { key, value, updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      )
+      .select("key"),
+  );
+}
+
+/** Reads one back, or null when it was never written. */
+export async function readValue<T>(key: string): Promise<T | null> {
+  const row = unwrap<{ value: T } | null>(
+    await db().from("app_state").select("value").eq("key", key).maybeSingle(),
+  );
+  return row?.value ?? null;
 }
 
 /** When the named thing last ran, or null if it never has. */
@@ -1386,3 +1408,28 @@ export async function adminSetPick(
     .single();
   if (result.error) throw new Error(result.error.message);
 }
+
+// ---------------------------------------------------------- request cache
+
+/**
+ * The lookups several parts of one page ask for.
+ *
+ * A single request renders a layout and a page, and both want the group and
+ * the member; the picks page then wants the week list once per competition and
+ * the members again for the board. React's cache keeps the first answer for
+ * the rest of that request, so the same question is not put to the database
+ * four times. It is per request and nothing is held between them, so a page is
+ * never built from another request's data.
+ *
+ * Only reads are here. Anything that writes, or that must see a write made
+ * earlier in the same request, is deliberately left out.
+ */
+export const getGroup = cache(getGroupOnce);
+export const getUser = cache(getUserOnce);
+export const getMembers = cache(getMembersOnce);
+export const listWeeks = cache(listWeeksOnce);
+export const listOpenedWeeks = cache(listOpenedWeeksOnce);
+export const listPickableWeeks = cache(listPickableWeeksOnce);
+export const listViewableWeeks = cache(listViewableWeeksOnce);
+export const sportsWithOpenWeeks = cache(sportsWithOpenWeeksOnce);
+export const sportsWithViewableWeeks = cache(sportsWithViewableWeeksOnce);

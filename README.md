@@ -751,8 +751,7 @@ another one without a code change.
 page asks Vercel for 300 seconds. **That needs a Pro plan.** Hobby allows at
 most 60 seconds, and a deploy asking for more than the plan permits is
 rejected. If a deploy fails naming `maxDuration`, change the `maxDuration`
-export in `src/app/g/[groupId]/admin/page.tsx` and
-`src/app/api/cron/refresh/route.ts` from 300 to 60.
+export in `src/app/g/[groupId]/admin/page.tsx` from 300 to 60.
 
 Cost is small either way. A weekly pull runs on the order of well under a dollar
 a month on Sonnet.
@@ -904,13 +903,29 @@ final score by hand on the Games page when they do. Saving a score there
 regrades every pick on that game immediately, so the leaderboard is correct
 either way.
 
-## 10. Check the weekly job
+## 10. Check the scheduled job
 
-Open your Vercel project → **Settings** → **Cron Jobs**. You should see one
-entry for `/api/cron/refresh`. It runs itself from here on; there is nothing to
-maintain.
+Scores keep themselves current two ways, and neither needs Vercel Cron.
 
-Details of what it does and when are in *The weekly refresh* below.
+**The app checks while anyone is watching.** Opening the picks page brings
+scores up to date when a game is under way and nobody has checked in the last
+ten minutes. The page says when it last looked.
+
+**A GitHub Actions workflow calls in every half hour** during game windows, for
+the times nobody has the app open. It needs two repository secrets, under your
+repository's Settings → Secrets and variables → Actions:
+
+| Secret | Value |
+| --- | --- |
+| `APP_URL` | `https://your-app.vercel.app`, no trailing slash |
+| `CRON_SECRET` | the same value you set in Vercel |
+
+Check it from the **Actions** tab: open *Update scores*, and use **Run
+workflow** to force one at any time, phone included. A successful run prints
+what it did and how many odds-feed calls are left.
+
+Treat the workflow as a backstop rather than the mechanism. GitHub's scheduler
+is best-effort and drops runs when it is busy.
 
 ---
 
@@ -939,93 +954,21 @@ means the build failed; tap it to read the log.
 
 ---
 
-# The weekly refresh
+# Keeping a week current
 
-`vercel.json` schedules `/api/cron/refresh` for **Tuesday evening Eastern**, once
-a week.
+Nothing polls for spreads. Lines are pulled when you press a button, which is
+what makes a locked line trustworthy: it cannot move behind your back.
 
-The schedule reads `0 2 * * 3`, which is Wednesday 02:00 UTC. Vercel Cron only
-speaks UTC, so an Eastern evening time lands on the next UTC day:
-
-| Part of the season | What `0 2 * * 3` means locally |
-| --- | --- |
-| November to February (EST) | Tuesday 9:00 PM Eastern |
-| September and October (EDT) | Tuesday 10:00 PM Eastern |
-
-Nothing in the app cares about the one-hour drift, and it never moves off
-Tuesday. To pin 9:00 PM during the early season instead, change it to
-`0 1 * * 3` and accept 8:00 PM for the rest.
-
-Tuesday evening is a good slot: Monday Night Football is over, the new week has
-begun, and the books have posted lines for the coming Sunday.
-
-## What each run does
-
-1. Freezes the line on every game whose kickoff has passed.
-2. Pulls current spreads and any newly scheduled games.
-3. Pulls scores for games in progress or recently finished.
-4. Regrades every pick on a resolved game.
-
-**Freezing comes first on purpose.** It stamps the line on every game past
-kickoff, and the odds pull then skips those games because they are frozen.
-Pulling first would let a revised line overwrite the number a pick should be
-graded against, in the window between kickoff and the next run. On a weekly
-schedule that window is a week wide.
-
-**Spread freezing is the point of the whole job.** The line shown to members is
-whatever was last fetched, right up to kickoff. At kickoff the current value is
-stored permanently, and every later run skips that game, so a revision in the
-feed's historical data can never move the number a pick was graded against.
-
-If the odds feed is unreachable, the run reports the failure and changes nothing:
-the last known spread stays on screen rather than erroring out. Freezing and
-grading still run, because they only need data already stored.
-
-## The one consequence of a weekly pull
-
-Scores and grading ride on the same run, so a game finishing on Sunday will not
-show points on the leaderboard until Tuesday night. Three ways to handle it:
-
-- **Press the button.** Admin → Odds feed → *Refresh odds and scores now* does
-  the identical work on demand. Press it Sunday night and the leaderboard is
-  current. This is the easiest answer and costs two API calls.
-- **Add a second run for scoring.** Edit `vercel.json` on GitHub and add a second
-  entry to the `crons` list:
-
-  ```json
-  { "path": "/api/cron/refresh", "schedule": "0 6 * * 2" }
-  ```
-
-  That is Tuesday 06:00 UTC, which is Monday 1:00 AM Eastern in winter, after
-  Sunday's games and before Monday night's.
-- **Leave it.** If nobody minds the leaderboard settling on Tuesday, this is
-  genuinely fine and the cheapest option.
-
-Picks lock on schedule regardless. Whether a game accepts a change is decided by
-comparing its kickoff time to the clock every time the page loads, not by the
-cron job, so a game kicking off Sunday at 1:00 PM stops taking picks at 1:00 PM
-whether or not anything ran that week.
-
-**Vercel's Hobby plan allows one cron run per day**, which a weekly schedule sits
-comfortably inside. The second scoring run above is also fine. Only a sub-daily
-schedule needs the Pro plan.
-
-## The odds feed and its quota
-
-Each run makes **two** calls to The Odds API, one for spreads and one for scores.
-The weekly schedule is cheap:
-
-| Schedule | Runs per month | API calls per month |
+| What | When | Cost |
 | --- | --- | --- |
-| **Weekly, as shipped** | ~4 | **~9** |
-| Weekly, plus a Monday scoring run | ~9 | ~18 |
-| Every hour | 720 | 1,440 |
-| Every 15 minutes | 2,880 | 5,760 |
+| Pull games, pull totals | You press it, once a week | One odds-feed call each |
+| Score checks while people watch | Automatic, at most one per ten minutes, only while a game is on | One call, or none with a scores page configured |
+| The half-hourly workflow | Automatic, during game windows | The same |
+| Pull scores, Update odds | You press it, for one named week | One call |
 
-The Odds API's free tier is 500 calls a month, so the shipped schedule uses under
-2% of it. Manual presses of the admin refresh button count too, at two calls
-each, and you would need roughly 240 of them in a month to run out. Check their
-current pricing page before moving to anything hourly, since tier sizes change.
+Freezing lines at kickoff and regrading picks ride along with every score
+check, and both read only stored data, so they cost nothing and happen even
+when the feed is unreachable.
 
 ---
 
@@ -1063,7 +1006,7 @@ the rows below are things it will find for you.
 | Odds refresh mentions scores but the spreads came through | Expected on the free plan. The scores endpoint restricts finished-game lookups to paid plans, so results can lag. Enter a final score by hand on the Games page, or upgrade. The spreads are unaffected. |
 | Odds refresh says `Usage quota` | The monthly allowance is spent. `/setup` shows how many calls remain. |
 | Leaderboard shows 0 after a game is final | Grading runs on the weekly pass or when an admin saves a score override. Press Admin → Refresh odds and scores now. |
-| Cron job never appears in Vercel | `vercel.json` has to be on the deployed branch. Cron jobs register on deploy, not on save. |
+| The scheduled job never runs | GitHub Actions only runs a schedule from the repository's default branch, and its scheduler drops runs when busy. Check the Actions tab, and use Run workflow to force one. |
 | A fix was pushed but the app has not changed | Check the Deployments tab. Code pushes deploy on their own; if the newest deployment is older than the push, open it and read the build log. |
 | Everyone got signed out | `SESSION_SECRET` changed. Harmless — sign back in with join code, username and PIN. |
 | A Supabase button will not tap | Safari's **aA** menu → **Request Desktop Website**. |

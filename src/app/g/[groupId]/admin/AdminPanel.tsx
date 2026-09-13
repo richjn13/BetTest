@@ -49,8 +49,8 @@ type Props = {
   picks: Pick[];
   actions: AdminAction[];
   adjustments: PointAdjustment[];
-  /** What the odds feed says is left this month. Null when it could not say. */
-  quota: { remaining: number | null; used: number | null } | null;
+  /** The balance written down by the last call the app made. */
+  quota: { remaining: number | null; used: number | null; at?: string } | null;
   /** The stored AP Top 25 for the latest college week, if there is one. */
   poll: {
     seasonYear: number;
@@ -334,7 +334,8 @@ function QuotaLine({ quota }: { quota: Props["quota"] }) {
   if (!quota || quota.remaining === null) {
     return (
       <p className="text-xs text-muted">
-        The odds feed could not say how many calls are left. Check the setup page.
+        No balance recorded yet. It appears after the first call this deployment
+        makes.
       </p>
     );
   }
@@ -345,8 +346,9 @@ function QuotaLine({ quota }: { quota: Props["quota"] }) {
   return (
     <p className={`text-xs ${low ? "text-[rgb(var(--loss))]" : "text-muted"}`}>
       <strong className={low ? "" : "text-ink"}>{quota.remaining}</strong>
-      {allowance === null ? " calls" : ` of your ${allowance} calls`} left this month.
-      A pull spends one. {low && "Running low: use Claude below, or add games by hand."}
+      {allowance === null ? " calls" : ` of your ${allowance} calls`} left as of the
+      last one spent. A pull spends one.{" "}
+      {low && "Running low: use Claude below, or add games by hand."}
     </p>
   );
 }

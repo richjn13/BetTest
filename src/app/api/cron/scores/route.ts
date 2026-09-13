@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { probeOddsFeed } from "@/lib/odds";
-import { sportsWithOpenWeeks } from "@/lib/queries";
+import { QUOTA_KEY, type RememberedQuota } from "@/lib/odds";
+import { readValue, sportsWithOpenWeeks } from "@/lib/queries";
 import { runRefresh } from "@/lib/refresh";
 
 /**
@@ -42,10 +42,11 @@ export async function GET(request: Request): Promise<NextResponse> {
       { status: 500 },
     );
   }
-  // Reading the balance is free -- the feed's listing endpoint is not billed --
-  // and it is what keeps a five-minute schedule from quietly eating the month.
-  const probe = sports.length > 0 ? await probeOddsFeed() : null;
-  const remaining = probe?.quota.remaining ?? null;
+  // The balance every call writes down, read from the database rather than
+  // asked of the feed: this runs on a schedule and an extra round trip on
+  // every run is a cost of its own.
+  const stored = sports.length > 0 ? await readValue<RememberedQuota>(QUOTA_KEY) : null;
+  const remaining = stored?.remaining ?? null;
 
   if (remaining !== null && remaining < MIN_REMAINING) {
     return NextResponse.json(

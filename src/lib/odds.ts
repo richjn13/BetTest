@@ -22,7 +22,7 @@ import {
   type Endpoint,
 } from "./odds-url";
 import { sportConfig, type Sport } from "./sports";
-import { listOpenedWeeks } from "./queries";
+import { listOpenedWeeks, recordValue } from "./queries";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -72,7 +72,7 @@ function readQuota(response: Response): Quota {
 
 let lastQuota: Quota = { remaining: null, used: null };
 
-/** What each key last reported, keyed by its last four characters. */
+/** What each key last reported, keyed by the key itself. */
 const quotaByKey = new Map<string, Quota>();
 
 /** Quota counters from the most recent call this process made. */
@@ -85,12 +85,23 @@ export function keyLabel(key: string): string {
   return `...${key.slice(-4)}`;
 }
 
-/** What every configured key last reported, for the setup and admin pages. */
-export function quotaPerKey(): { label: string; quota: Quota }[] {
-  return env.oddsApiKeys.map((key) => ({
-    label: keyLabel(key),
-    quota: quotaByKey.get(key) ?? { remaining: null, used: null },
-  }));
+export const QUOTA_KEY = "odds:quota";
+
+export type RememberedQuota = Quota & { at: string };
+
+/**
+ * The balance is written down whenever a call is made, so a page can show it
+ * without making one of its own. The admin page used to probe the feed on
+ * every single load -- an outbound request before anything rendered, for a
+ * number that only changes when a call is spent.
+ */
+async function rememberQuota(quota: Quota): Promise<void> {
+  if (quota.remaining === null) return;
+  try {
+    await recordValue(QUOTA_KEY, { ...quota, at: new Date().toISOString() });
+  } catch {
+    // Showing a stale balance is not worth failing a pull over.
+  }
 }
 
 /** A key that answered 401, or reported nothing left, is not worth retrying. */
@@ -123,6 +134,7 @@ async function getJson<T>(path: Endpoint, params: Record<string, string> = {}): 
     const quota = readQuota(response);
     quotaByKey.set(key, quota);
     lastQuota = quota;
+    await rememberQuota(quota);
 
     if (response.ok) return (await response.json()) as T;
 
@@ -145,45 +157,99 @@ async function getJson<T>(path: Endpoint, params: Record<string, string> = {}): 
  * Checks the key without spending quota. The /sports endpoint is free, so this
  * can be called from a diagnostics page as often as you like.
  */
+export type KeyProbe = {
+  label: string;
+  ok: boolean;
+  status: number | null;
+  message: string;
+  quota: Quota;
+};
+
 export async function probeOddsFeed(): Promise<{
   ok: boolean;
   status: number | null;
   message: string;
   quota: Quota;
+  /** One entry per configured key, so two people can each see their own. */
+  keys: KeyProbe[];
 }> {
-  if (!process.env.ODDS_API_KEY) {
+  const keys = env.oddsApiKeys;
+  if (keys.length === 0) {
     return {
       ok: false,
       status: null,
       message: "No key set. The odds feed is off until you add one.",
       quota: { remaining: null, used: null },
+      keys: [],
     };
   }
 
-  try {
-    await getJson<unknown[]>(SPORTS_ENDPOINT);
-    const quota = lastKnownQuota();
-    return {
-      ok: true,
-      status: 200,
-      message:
-        quota.remaining === null
-          ? "The key works."
-          : `The key works. ${quota.remaining} of your monthly calls remain.`,
-      quota,
-    };
-  } catch (error) {
-    const status = error instanceof OddsApiError ? error.status : null;
-    return {
-      ok: false,
-      status,
-      message:
-        status === 401
-          ? "The key was rejected. Check for a typo, and that you redeployed after setting it."
-          : describe(error),
-      quota: lastKnownQuota(),
-    };
-  }
+  // The sports listing is not billed, so every key can be checked without
+  // spending anything. They go out together.
+  const probes = await Promise.all(
+    keys.map(async (key): Promise<KeyProbe> => {
+      try {
+        const response = await fetch(oddsApiUrl(SPORTS_ENDPOINT, key), {
+          cache: "no-store",
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        const quota = readQuota(response);
+        quotaByKey.set(key, quota);
+
+        if (!response.ok) {
+          const body = readableError(await response.text().catch(() => ""));
+          return {
+            label: keyLabel(key),
+            ok: false,
+            status: response.status,
+            quota,
+            message:
+              response.status === 401
+                ? "Rejected. Check for a typo, and that you redeployed after setting it."
+                : `The feed answered ${response.status}${body ? `: ${body}` : ""}`,
+          };
+        }
+
+        return {
+          label: keyLabel(key),
+          ok: true,
+          status: 200,
+          quota,
+          message:
+            quota.remaining === null
+              ? "Works."
+              : `Works. ${quota.remaining} calls left this month.`,
+        };
+      } catch (error) {
+        return {
+          label: keyLabel(key),
+          ok: false,
+          status: null,
+          quota: { remaining: null, used: null },
+          message: describe(error),
+        };
+      }
+    }),
+  );
+
+  const working = probes.filter((probe) => probe.ok);
+  const total = working.reduce(
+    (sum, probe) => (probe.quota.remaining === null ? sum : sum + probe.quota.remaining),
+    0,
+  );
+
+  return {
+    ok: working.length > 0,
+    status: working.length > 0 ? 200 : (probes[0]?.status ?? null),
+    quota: { remaining: working.length > 0 ? total : null, used: null },
+    keys: probes,
+    message:
+      working.length === 0
+        ? (probes[0]?.message ?? "No key worked.")
+        : probes.length === 1
+          ? probes[0].message
+          : `${working.length} of ${probes.length} keys work, ${total} calls left between them.`,
+  };
 }
 
 // ------------------------------------------------------------------- sync

@@ -9,8 +9,8 @@ import {
   getWeek,
   listWeeks,
 } from "@/lib/queries";
-import { getStoredPoll } from "@/lib/queries";
-import { probeOddsFeed } from "@/lib/odds";
+import { getStoredPoll, readValue } from "@/lib/queries";
+import { QUOTA_KEY, type RememberedQuota } from "@/lib/odds";
 import { AdminPanel } from "./AdminPanel";
 
 export const dynamic = "force-dynamic";
@@ -37,15 +37,16 @@ export default async function AdminPage({
 }) {
   const { group, user } = await requireAdmin(params.groupId);
 
-  // The feed's own /sports endpoint is not billed, and every response carries
-  // the quota counters, so the balance can be shown before a button is pressed
-  // without that costing a call itself.
-  const [members, weeks, actions, adjustments, probe] = await Promise.all([
+  // Every call the app makes writes the balance down, so this page reads it
+  // rather than calling the feed itself. That took an outbound request on every
+  // single load, before anything could render, for a number that only moves
+  // when a call is actually spent.
+  const [members, weeks, actions, adjustments, quota] = await Promise.all([
     getMembers(params.groupId),
     listWeeks(),
     getAdminActions(params.groupId, 50),
     getPointAdjustments(params.groupId),
-    probeOddsFeed().catch(() => null),
+    readValue<RememberedQuota>(QUOTA_KEY).catch(() => null),
   ]);
 
   // Admins see every week, closed ones included, so a closed week can be
@@ -82,7 +83,7 @@ export default async function AdminPage({
       picks={picks}
       actions={actions}
       adjustments={adjustments}
-      quota={probe?.ok ? probe.quota : null}
+      quota={quota}
       poll={
         poll && collegeWeek
           ? {
