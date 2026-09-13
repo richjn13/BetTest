@@ -16,9 +16,9 @@ export function WeekNotice({ week, cards }: { week: Week; cards: GameCard[] }) {
   let message: string;
 
   if (week.closed_at) {
-    // Members never reach a closed week; this only shows if one is reopened
-    // while somebody has the page open.
-    message = `${week.label} is done. Scores are final and nothing here will change.`;
+    // A finished week stays here to be read. Say so plainly, so nobody wonders
+    // why the buttons have gone.
+    message = `${week.label} is finished. This is how it ended; nothing here can change.`;
   } else if (started === 0) {
     // Lines are pulled by hand each week, so say when that happens rather than
     // leaving people wondering whether a number is stale.

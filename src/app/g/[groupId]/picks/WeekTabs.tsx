@@ -45,7 +45,14 @@ export function WeekTabs({
               }`}
           >
             {week.season_type === "regular" ? `Week ${week.week_number}` : week.label}
-            {week.closed_at && <span className="ml-1 opacity-60">·</span>}
+            {/* A finished week is still here to read; it just takes nothing. */}
+            {week.closed_at && (
+              <span className={`ml-1.5 text-[10px] uppercase tracking-wide ${
+                active ? "opacity-70" : "opacity-60"
+              }`}>
+                final
+              </span>
+            )}
           </Link>
         );
       })}

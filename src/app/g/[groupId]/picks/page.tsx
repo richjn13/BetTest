@@ -2,8 +2,8 @@ import { requireViewer } from "@/lib/auth";
 import {
   getCurrentWeek,
   getWeekBoard,
-  listPickableWeeks,
-  sportsWithOpenWeeks,
+  listViewableWeeks,
+  sportsWithViewableWeeks,
 } from "@/lib/queries";
 import { refreshScoresIfStale } from "@/lib/live";
 import { isSport, sportLabel, type Sport } from "@/lib/sports";
@@ -35,16 +35,16 @@ export default async function PicksPage({
   // however many people are watching.
   const live = await refreshScoresIfStale();
 
-  const open = await sportsWithOpenWeeks();
-  const sports = DISPLAY_ORDER.filter((sport) => open.includes(sport));
+  const viewable = await sportsWithViewableWeeks();
+  const sports = DISPLAY_ORDER.filter((sport) => viewable.includes(sport));
 
   if (sports.length === 0) {
     return (
       <div className="card p-6 text-center">
-        <p className="text-sm font-medium">No week is open.</p>
+        <p className="text-sm font-medium">Nothing here yet.</p>
         <p className="mt-1 text-sm text-muted">
-          An admin opens a week by pulling its games from the Admin tab. Closed
-          weeks come off this page, but their points stay on the leaderboard.
+          An admin starts a week by pulling its games from the Admin tab. Once a
+          week has been played it stays here to look back at.
         </p>
       </div>
     );
@@ -63,20 +63,25 @@ export default async function PicksPage({
   // going back to the server.
   const sections = await Promise.all(
     sports.map(async (sport) => {
-      const weeks = await listPickableWeeks(sport);
+      // Closed weeks are listed too, so a finished week can be looked back at.
+      // The one you land on is still the open one: the past is there to visit,
+      // not to arrive in.
+      const weeks = await listViewableWeeks(sport);
 
       // A week chosen from the week tabs only applies to its own competition.
       const chosen = searchParams.week
         ? weeks.find((entry) => entry.id === searchParams.week)
         : undefined;
-      const week = chosen ?? (await getCurrentWeek(sport));
+      // Nothing open means the season is between weeks or over, so show the
+      // most recent finished one rather than an empty page.
+      const week = chosen ?? (await getCurrentWeek(sport)) ?? weeks.at(-1) ?? null;
 
       if (!week) {
         return {
           sport,
           content: (
             <div className="card p-6 text-center">
-              <p className="text-sm font-medium">No {sportLabel(sport)} week is open.</p>
+              <p className="text-sm font-medium">No {sportLabel(sport)} week yet.</p>
             </div>
           ),
         };
@@ -84,6 +89,8 @@ export default async function PicksPage({
 
       const board = await getWeekBoard(params.groupId, user.id, week.id);
       const label = `${sportLabel(sport)} ${week.label}`;
+      // A finished week shows what happened and accepts nothing.
+      const readOnly = week.closed_at !== null;
 
       return {
         sport,
@@ -108,7 +115,7 @@ export default async function PicksPage({
                 cards={board}
                 groupId={params.groupId}
                 weekLabel={label}
-                readOnly={false}
+                readOnly={readOnly}
                 sport={sport}
               />
             )}

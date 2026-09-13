@@ -112,15 +112,15 @@ A week moves through three states, and nothing can reach backwards past them.
 | --- | --- |
 | **Not opened** | Invisible to members. The odds feed will not create games in it. Next week's lines cannot appear before you pull them. |
 | **Open** | Visible, picks accepted, lines refresh until each kickoff |
-| **Closed** | Off the app. Members no longer see the week at all: no tab, no games, no picks. Its points stay in the season totals on the leaderboard. Admins still see it, so it can be reopened |
+| **Closed** | Finished. Everyone can still read it -- picks, lines, scores and who took what -- but nothing can be changed: no picks, no lock, no line refresh, no re-pull. Its points stay in the season totals on the leaderboard |
 
 A week opens the moment you pull its lines or add a game by hand. You close it
 yourself under **Admin → Week status**, and can reopen one closed by mistake.
 
-**Closing a week hides it from everyone**, so leave it open long enough for
-people to read the end-of-week summary on the picks page. That summary goes
-with the week; the leaderboard keeps the points and the per-week column either
-way.
+**Closing a week settles it rather than hiding it.** The week stays in the week
+strip marked *final*, so the end-of-week summary and everybody's picks can be
+read for as long as anyone cares to. What closing stops is change: no pick can
+be made or moved, no line refreshed, no score re-pulled.
 
 This is what lets you work a week at a time. Pull Week 2 when you are ready for
 Week 2, and nothing about Week 1 moves.
@@ -553,6 +553,13 @@ separate rules. Games stay in kickoff order throughout.
 Switching tabs is immediate: both competitions arrive with the page and the tab
 only decides what is on screen. The URL keeps up without a navigation, so a
 reload lands where you were.
+
+**A finished week stays here to be read.** Closing a week fixes its result; it
+does not hide it, and how the week went is most of what a pool talks about
+afterwards. Closed weeks appear in the week strip marked *final*, showing every
+pick as it was made, the lines they were graded against and who took what. They
+accept nothing: no picks, no lock, no changes. You still land on the open week,
+since the past is there to visit rather than to arrive in.
 
 **College cards name the school, not the mascot.** "Indiana" reads to everybody;
 "Hoosiers" does not, and there are a dozen Bulldogs. The mascot moves to the

@@ -320,9 +320,38 @@ export async function listPickableWeeks(sport?: Sport): Promise<Week[]> {
   return (unwrap(await query) as Week[]) ?? [];
 }
 
-/** Which sports currently have a week members can see. */
+/**
+ * Every week a member may look at: the open ones, and the finished ones.
+ *
+ * A closed week is read-only rather than gone. Closing it fixes the result;
+ * it does not mean nobody may see how the week went, which is most of what a
+ * pool talks about afterwards. Only an unpulled week is invisible, because
+ * that one genuinely does not exist yet.
+ */
+export async function listViewableWeeks(sport?: Sport): Promise<Week[]> {
+  let query = db()
+    .from("weeks")
+    .select(WEEK_COLUMNS)
+    .not("opened_at", "is", null)
+    .order("season_year")
+    .order("week_number");
+  if (sport) query = query.eq("sport", sport);
+  return (unwrap(await query) as Week[]) ?? [];
+}
+
+/** Which sports currently have a week that still accepts picks. */
 export async function sportsWithOpenWeeks(): Promise<Sport[]> {
   const weeks = await listPickableWeeks();
+  return SPORTS.filter((sport) => weeks.some((week) => week.sport === sport));
+}
+
+/**
+ * Which sports have anything to look at, finished weeks included. A season
+ * whose last week has been closed should not vanish from the app the moment
+ * it ends; that is exactly when people want to read it.
+ */
+export async function sportsWithViewableWeeks(): Promise<Sport[]> {
+  const weeks = await listViewableWeeks();
   return SPORTS.filter((sport) => weeks.some((week) => week.sport === sport));
 }
 

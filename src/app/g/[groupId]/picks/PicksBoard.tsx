@@ -159,8 +159,9 @@ export function PicksBoard({
       </ul>
 
       <p className="pt-1 text-xs leading-relaxed text-muted">
-        Picks stay changeable until each game kicks off, one game at a time.
-        Everyone else&apos;s picks appear once a game starts.
+        {readOnly
+          ? "This week is finished. Every pick is shown as it was made."
+          : "Picks stay changeable until each game kicks off, one game at a time. Everyone else's picks appear once a game starts."}
       </p>
     </section>
   );
