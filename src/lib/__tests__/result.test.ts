@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { consensusVerdict, describeOutcome, type OutcomeInput } from "../result";
+import { consensusVerdict, describeOutcome, liveStanding, type OutcomeInput } from "../result";
 
 const base: OutcomeInput = {
   homeTeam: "Kansas City Chiefs",
@@ -126,5 +126,73 @@ describe("consensusVerdict", () => {
   it("returns nothing when the game is undecided or nobody picked", () => {
     expect(consensusVerdict({ total: 5, home: 3, away: 2 }, null)).toBeNull();
     expect(consensusVerdict({ total: 0, home: 0, away: 0 }, "home")).toBeNull();
+  });
+});
+
+describe("liveStanding", () => {
+  const live = (home: number, away: number, spread: number | null, side: "home" | "away") =>
+    liveStanding({
+      status: "live" as const,
+      finalHomeScore: home,
+      finalAwayScore: away,
+      spread,
+      pickedSide: side,
+    });
+
+  it("says ahead when the picked side is covering right now", () => {
+    // Home leads 21-7 and gives 7: covering by 7.
+    expect(live(21, 7, -7, "home")).toEqual({ state: "ahead", margin: 7 });
+  });
+
+  it("says behind, with how much is needed", () => {
+    // Away trails 21-7 and gets 7: short by 7.
+    expect(live(21, 7, -7, "away")).toEqual({ state: "behind", margin: 7 });
+  });
+
+  it("says level when the game sits on the number", () => {
+    expect(live(14, 7, -7, "home")).toEqual({ state: "level", margin: 0 });
+  });
+
+  it("grades straight up when no line was set", () => {
+    expect(live(10, 3, null, "home")).toEqual({ state: "ahead", margin: 7 });
+  });
+
+  it("says nothing about a game that is not being played", () => {
+    expect(
+      liveStanding({
+        status: "final",
+        finalHomeScore: 21,
+        finalAwayScore: 7,
+        spread: -7,
+        pickedSide: "home",
+      }),
+    ).toBe(null);
+  });
+
+  it("reads a scoreless game against the line rather than as nothing", () => {
+    // Nobody has scored and home is giving 3, so home is three short already.
+    expect(live(0, 0, -3, "home")).toEqual({ state: "behind", margin: 3 });
+    expect(live(0, 0, -3, "away")).toEqual({ state: "ahead", margin: 3 });
+  });
+
+  it("says nothing when there is no pick or no score", () => {
+    expect(
+      liveStanding({
+        status: "live",
+        finalHomeScore: 21,
+        finalAwayScore: 7,
+        spread: -7,
+        pickedSide: null,
+      }),
+    ).toBe(null);
+    expect(
+      liveStanding({
+        status: "live",
+        finalHomeScore: null,
+        finalAwayScore: null,
+        spread: -7,
+        pickedSide: "home",
+      }),
+    ).toBe(null);
   });
 });

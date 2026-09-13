@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useState, useTransition } from "react";
-import { formatKickoff, spreadForSide, timeUntil } from "@/lib/format";
-import { consensusVerdict, describeOutcome } from "@/lib/result";
+import { formatKickoff, formatPoints, spreadForSide, timeUntil } from "@/lib/format";
+import { consensusVerdict, describeOutcome, liveStanding } from "@/lib/result";
 import { abbreviate, nickname, splitTeamName } from "@/lib/teams";
 import type { Sport } from "@/lib/sports";
 import {
@@ -206,8 +206,21 @@ function GameRow({
     points: card.pick?.points_awarded === null ? null : Number(card.pick?.points_awarded),
   });
 
-  // A settled game reads at a glance from the card's left edge: green for a
-  // win, red for a loss, neutral for a push or a game you sat out.
+  // Where the pick stands while the game is still on. Deliberately not the
+  // same thing as a result, and shown differently below so it cannot be read
+  // as one.
+  const standing = liveStanding({
+    status: game.status,
+    finalHomeScore: game.final_home_score,
+    finalAwayScore: game.final_away_score,
+    spread,
+    pickedSide: selection?.side ?? null,
+  });
+
+  // A settled game reads at a glance from the card's left edge: a solid bar,
+  // green for a win, red for a loss, neutral for a push or a game you sat out.
+  // A game still being played gets the same colours as a dashed bar, because
+  // dashed reads as "not finished" in a way no wording has to explain.
   const edge =
     outcome.verdict === "win"
       ? "border-l-4 border-l-[rgb(var(--win))]"
@@ -215,7 +228,13 @@ function GameRow({
         ? "border-l-4 border-l-[rgb(var(--loss))]"
         : outcome.verdict === "push"
           ? "border-l-4 border-l-edge"
-          : "";
+          : standing === null
+            ? ""
+            : standing.state === "ahead"
+              ? "border-l-4 border-dashed border-l-[rgb(var(--win))]/70"
+              : standing.state === "behind"
+                ? "border-l-4 border-dashed border-l-[rgb(var(--loss))]/70"
+                : "border-l-4 border-dashed border-l-edge";
 
   const verdictTone =
     outcome.verdict === "win"
@@ -224,25 +243,22 @@ function GameRow({
         ? "text-[rgb(var(--loss))]"
         : "text-muted";
 
-  // Flex scheduling moved this one after it was first listed.
-  const moved =
-    game.kickoff_changed_at !== null && new Date(game.kickoff_time).getTime() > Date.now();
-
   return (
     <li className={`card overflow-hidden ${edge}`}>
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5 text-xs">
+        {/* Just when it starts. A kickoff that moved is the admin's problem,
+            and colouring it red here only ever made people think something was
+            wrong with their pick. */}
         <span className="truncate text-muted">
-          {moved && (
-            <span className="mr-1.5 font-semibold text-[rgb(var(--loss))]">
-              Time changed
-            </span>
-          )}
-          <span className={moved ? "font-medium text-[rgb(var(--loss))]" : undefined}>
-            {formatKickoff(game.kickoff_time)}
-          </span>
+          {formatKickoff(game.kickoff_time)}
           {countdown && <span className="hidden sm:inline"> · in {countdown}</span>}
         </span>
-        <StatusPill card={card} verdict={outcome.verdict} saving={saving} />
+        <StatusPill
+          card={card}
+          verdict={outcome.verdict}
+          standing={standing}
+          saving={saving}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-2 p-3 pt-2">
@@ -257,6 +273,9 @@ function GameRow({
             spread={spread}
             sport={sport}
             selected={selection?.side === side}
+            // Only the side you took is tinted: the shading answers "how am I
+            // doing", not "who is winning".
+            live={selection?.side === side ? (standing?.state ?? null) : null}
             covered={outcome.covered === side}
             open={open}
             onChoose={() => onChoose(side)}
@@ -455,6 +474,7 @@ function SideButton({
   spread,
   sport,
   selected,
+  live,
   covered,
   open,
   onChoose,
@@ -464,6 +484,8 @@ function SideButton({
   spread: number | null;
   sport: Sport;
   selected: boolean;
+  /** Where this pick stands while the game is on, or null when it is not. */
+  live: "ahead" | "behind" | "level" | null;
   covered: boolean;
   open: boolean;
   onChoose: () => void;
@@ -490,7 +512,13 @@ function SideButton({
       aria-pressed={selected}
       className={`flex min-h-[56px] items-center justify-between gap-2 rounded-lg border
         px-3 py-2 text-left transition-colors disabled:cursor-default ${
-          selected
+          live === "ahead"
+            ? "border-dashed border-[rgb(var(--win))]/60 bg-[rgb(var(--win))]/[0.10]"
+            : live === "behind"
+              ? "border-dashed border-[rgb(var(--loss))]/60 bg-[rgb(var(--loss))]/[0.08]"
+              : live === "level"
+                ? "border-dashed border-edge bg-raised"
+                : selected
             ? "border-accent bg-accent/10"
             : covered
               ? "border-[rgb(var(--win))]/40 bg-[rgb(var(--win))]/[0.06]"
@@ -539,10 +567,12 @@ function SideButton({
 function StatusPill({
   card,
   verdict,
+  standing,
   saving,
 }: {
   card: GameCard;
   verdict: string;
+  standing: ReturnType<typeof liveStanding>;
   saving: boolean;
 }) {
   if (saving) return <span className="text-muted">Saving...</span>;
@@ -552,6 +582,34 @@ function StatusPill({
 
   if (game.status === "postponed" || game.status === "canceled") {
     return <span className={`${pill} bg-edge text-muted`}>{game.status}</span>;
+  }
+
+  // While the game is on, say where the pick stands and that it is not over.
+  // "Up 7" and "Down 7" are about the line, not the scoreboard, and the dotted
+  // ring says the same thing the dashed edge does: this can still change.
+  if (standing !== null) {
+    const tone =
+      standing.state === "ahead"
+        ? "bg-[rgb(var(--win))]/12 text-[rgb(var(--win))] ring-[rgb(var(--win))]/40"
+        : standing.state === "behind"
+          ? "bg-[rgb(var(--loss))]/10 text-[rgb(var(--loss))] ring-[rgb(var(--loss))]/40"
+          : "bg-edge text-muted ring-edge";
+    const words =
+      standing.state === "ahead"
+        ? `Up ${formatPoints(standing.margin)}`
+        : standing.state === "behind"
+          ? `Down ${formatPoints(standing.margin)}`
+          : "On the number";
+
+    return (
+      <span className={`${pill} ring-1 ring-dotted ${tone}`} title="Against the line, so far">
+        {words} · so far
+      </span>
+    );
+  }
+
+  if (game.status === "live") {
+    return <span className={`${pill} bg-accent/10 text-accent`}>Live</span>;
   }
   if (game.status === "final") {
     if (verdict === "win") {

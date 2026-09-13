@@ -1,5 +1,5 @@
 import { spreadForSide } from "./format";
-import { winningSide, type GradableGame, type Side } from "./scoring";
+import { coverMargin, winningSide, type GradableGame, type Side } from "./scoring";
 import { shortName } from "./teams";
 
 /**
@@ -159,4 +159,45 @@ export function consensusVerdict(
     total: consensus.total,
     percent: Math.round((right / consensus.total) * 100),
   };
+}
+
+// ------------------------------------------------------------------- live
+
+/**
+ * Where a pick stands while the game is still being played.
+ *
+ * "ahead" means the side you took is covering the line right now, "behind"
+ * means it is not, "level" means the game is sitting exactly on the number.
+ * Null means there is nothing to say yet: the game has not started, has
+ * finished, has no score, or you did not pick it.
+ *
+ * This is deliberately a different question from who won. Nothing here is
+ * settled, and the word for it has to carry that or it will be read as a
+ * result.
+ */
+export type LiveStanding = {
+  state: "ahead" | "behind" | "level";
+  /** Points the picked side has in hand against the line, or is short by. */
+  margin: number;
+};
+
+export function liveStanding(input: {
+  status: GradableGame["status"];
+  finalHomeScore: number | null;
+  finalAwayScore: number | null;
+  spread: number | null;
+  pickedSide: Side | null;
+}): LiveStanding | null {
+  if (input.status !== "live") return null;
+  if (input.pickedSide === null) return null;
+  if (input.finalHomeScore === null || input.finalAwayScore === null) return null;
+
+  // Positive means the home side is covering, so the away side's position is
+  // its negation.
+  const home = coverMargin(input.finalHomeScore, input.finalAwayScore, input.spread ?? 0);
+  const margin = input.pickedSide === "home" ? home : -home;
+
+  if (margin > 0) return { state: "ahead", margin };
+  if (margin < 0) return { state: "behind", margin: Math.abs(margin) };
+  return { state: "level", margin: 0 };
 }

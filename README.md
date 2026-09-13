@@ -571,6 +571,17 @@ then *Hoosiers*, then *vs Ohio State*. Result sentences and the consensus row
 use the school too, since a college abbreviation is built from the mascot and
 says nothing. The NFL is unchanged, because everyone knows the Chiefs.
 
+**While a game is on, your pick shades itself.** The side you took turns green
+when it is covering the line right now and red when it is not, and the pill at
+the top of the card says *Up 7 · so far* or *Down 7 · so far*. Both the shading
+and the card's left edge use a dashed border rather than the solid one a
+finished game gets, because dashed reads as unfinished without a sentence
+explaining it. The numbers are against the line, not the scoreboard: a team
+leading by three while giving seven is down four.
+
+Only the side you picked is shaded. The question the colour answers is "how am
+I doing", not "who is winning".
+
 The spread and the over/under stay on a card for the life of the game. While it
 is on, the line sits above the live score; when it is over, the line is the
 number the pick was graded against, sitting beside the final. The over/under
