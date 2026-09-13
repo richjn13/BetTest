@@ -10,6 +10,7 @@ import { formatPoints, shortDate, weekChoiceLabel } from "@/lib/format";
 import { weekPlayDateUtc } from "@/lib/season-week";
 import { abbreviate } from "@/lib/teams";
 import { SPORTS, sportConfig, sportLabel, type Sport } from "@/lib/sports";
+import { weekState } from "@/lib/types";
 import type {
   AdminAction,
   Game,
@@ -18,6 +19,7 @@ import type {
   PointAdjustment,
   User,
   Week,
+  WeekState,
 } from "@/lib/types";
 import { IDLE } from "./state";
 import { Feedback, NoteField, SectionStack, type Panel } from "./ui";
@@ -32,7 +34,7 @@ import {
   setAdminAction,
   savePollAction,
   scrapeScoresAction,
-  setWeekClosedAction,
+  setWeekStateAction,
   syncScoresAction,
   syncOddsAction,
 } from "./actions";
@@ -107,7 +109,11 @@ export function AdminPanel(props: Props) {
     {
       id: "weeks",
       title: "Week status",
-      hint: `${openWeeks.length} open · ${weeks.filter((entry) => entry.closed_at).length} closed`,
+      hint: [
+        `${openWeeks.length} open`,
+        `${weeks.filter((entry) => entry.closed_at && !entry.hidden_at).length} closed`,
+        `${weeks.filter((entry) => entry.hidden_at).length} hidden`,
+      ].join(" · "),
       body: <WeekStatusSection groupId={group.id} weeks={weeks} />,
     },
     {
@@ -249,46 +255,68 @@ function GroupSection({ group }: { group: Group }) {
 }
 
 function WeekStatusSection({ groupId, weeks }: { groupId: string; weeks: Week[] }) {
-  const [state, action] = useFormState(setWeekClosedAction, IDLE);
+  const [state, action] = useFormState(setWeekStateAction, IDLE);
   const opened = weeks.filter((week) => week.opened_at !== null);
+
+  const states: { value: WeekState; label: string; hint: string }[] = [
+    { value: "open", label: "Open", hint: "Takes picks" },
+    { value: "closed", label: "Closed", hint: "Finished, still readable" },
+    { value: "hidden", label: "Hidden", hint: "Off the app, counts for nobody" },
+  ];
 
   return (
     <div className="space-y-3">
       <Feedback state={state} />
       <p className="text-sm text-muted">
-        A week appears to members once its lines are pulled. Closing it fixes
-        everything in place: no line refresh, no pick, no re-pull.
+        A week appears to members once its games are pulled. <strong>Open</strong>{" "}
+        takes picks. <strong>Closed</strong> is finished and still there to read:
+        the scores, the picks, who took what. <strong>Hidden</strong> is off the
+        app entirely, with no column on the leaderboard and its points counting
+        for nobody. All three can be undone.
       </p>
 
       {opened.length === 0 ? (
         <p className="text-sm text-muted">No weeks opened yet.</p>
       ) : (
         <ul className="space-y-2">
-          {[...opened].reverse().map((week) => (
-            <li
-              key={week.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg
-                         border border-edge p-3"
-            >
-              <span className="text-sm font-medium">
-                <span className="mr-2 rounded bg-edge px-1.5 py-0.5 text-xs font-semibold">
-                  {sportLabel(week.sport)}
-                </span>
-                {weekChoiceLabel(week)}
-                <span className="ml-2 text-xs font-normal text-muted">
-                  {week.closed_at ? "closed" : "open"}
-                </span>
-              </span>
-              <form action={action}>
-                <input type="hidden" name="groupId" value={groupId} />
-                <input type="hidden" name="weekId" value={week.id} />
-                <input type="hidden" name="close" value={week.closed_at ? "false" : "true"} />
-                <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
-                  {week.closed_at ? "Reopen" : "Close week"}
-                </SubmitButton>
-              </form>
-            </li>
-          ))}
+          {[...opened].reverse().map((week) => {
+            const current = weekState(week);
+            return (
+              <li key={week.id} className="rounded-lg border border-edge p-3">
+                <p className="mb-2 text-sm font-medium">
+                  <span className="mr-2 rounded bg-edge px-1.5 py-0.5 text-xs font-semibold">
+                    {sportLabel(week.sport)}
+                  </span>
+                  {weekChoiceLabel(week)}
+                </p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {states.map((option) => {
+                    const active = option.value === current;
+                    return (
+                      <form key={option.value} action={action}>
+                        <input type="hidden" name="groupId" value={groupId} />
+                        <input type="hidden" name="weekId" value={week.id} />
+                        <input type="hidden" name="state" value={option.value} />
+                        <SubmitButton
+                          className={`btn py-1 text-sm ${
+                            active ? "border-accent text-ink" : "text-muted"
+                          }`}
+                          pendingLabel="Saving..."
+                        >
+                          {option.label}
+                        </SubmitButton>
+                      </form>
+                    );
+                  })}
+                </div>
+
+                <p className="mt-1.5 text-xs text-muted">
+                  {states.find((option) => option.value === current)?.hint}
+                </p>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

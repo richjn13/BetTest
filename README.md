@@ -113,9 +113,12 @@ A week moves through three states, and nothing can reach backwards past them.
 | **Not opened** | Invisible to members. The odds feed will not create games in it. Next week's lines cannot appear before you pull them. |
 | **Open** | Visible, picks accepted, lines refresh until each kickoff |
 | **Closed** | Finished. Everyone can still read it -- picks, lines, scores and who took what -- but nothing can be changed: no picks, no lock, no line refresh, no re-pull. Its points stay in the season totals on the leaderboard |
+| **Hidden** | Off the app. No tab, no games, no column on the leaderboard, and its points count for nobody. For a week pulled by mistake or one the pool decided not to play. Admins still see it, so it can come back |
 
-A week opens the moment you pull its lines or add a game by hand. You close it
-yourself under **Admin → Week status**, and can reopen one closed by mistake.
+A week opens the moment you pull its lines or add a game by hand. The three
+states are buttons under **Admin → Week status**, and every one of them can be
+undone. Unhiding a week returns it to closed rather than open, so nobody is
+surprised by a finished week taking picks again.
 
 **Closing a week settles it rather than hiding it.** The week stays in the week
 strip marked *final*, so the end-of-week summary and everybody's picks can be
@@ -211,12 +214,12 @@ game by hand, which is enough to see picks, locking and scoring work end to end.
 
 ## 2. Create the database tables
 
-**There are twelve files to run, in order**, all in `supabase/migrations/`:
+**There are thirteen files to run, in order**, all in `supabase/migrations/`:
 `0001_init.sql`, `0002_locked_lines.sql`, `0003_one_game_per_matchup.sql`,
 `0004_week_snapshots.sql`, `0005_profiles.sql`, `0006_schedule_changes.sql`,
 `0007_sports_and_totals.sql`, `0008_totals_await_number.sql`,
 `0009_slate_choice.sql`, `0010_ap_poll.sql`, `0011_drop_team_records.sql`,
-then `0012_app_state.sql`. Do the first one now and come back for the others.
+`0012_app_state.sql`, then `0013_hidden_weeks.sql`. Do the first one now and come back for the others.
 
 **First, copy the SQL.** Open this file on GitHub:
 
@@ -252,8 +255,8 @@ lets you turn an over/under on before its number has been pulled, and
 `0009_slate_choice.sql` lets you set a game aside without deleting it, and
 `0010_ap_poll.sql` stores the AP Top 25 so it is fetched once a week rather
 than on every pull. `0011_drop_team_records.sql` removes two columns that a previous version
-added, doing nothing if you never ran it, and `0012_app_state.sql` adds the
-small table that keeps score checks from being made twice over.
+added, doing nothing if you never ran it, `0012_app_state.sql` adds the small table that keeps score checks from being
+made twice over, and `0013_hidden_weeks.sql` adds the third week state.
 
 **Running these twice is safe.** Every statement creates its object only if it is
 missing, so a second run does nothing rather than failing.

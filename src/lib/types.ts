@@ -34,7 +34,20 @@ export type Week = {
   opened_at: string | null;
   /** Set when the week is finished. Nothing may change it afterwards. */
   closed_at: string | null;
+  /** Set when the week is off the app entirely and counts for nobody. */
+  hidden_at: string | null;
 };
+
+/** Open takes picks, closed is finished but readable, hidden is gone. */
+export type WeekState = "open" | "closed" | "hidden";
+
+export function weekState(week: {
+  closed_at: string | null;
+  hidden_at: string | null;
+}): WeekState {
+  if (week.hidden_at) return "hidden";
+  return week.closed_at ? "closed" : "open";
+}
 
 export type Game = {
   id: string;

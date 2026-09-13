@@ -56,6 +56,7 @@ const SCHEMA: { table: string; columns: string[]; migration: string }[] = [
     columns: ["sport"],
     migration: "0007_sports_and_totals.sql",
   },
+  { table: "weeks", columns: ["hidden_at"], migration: "0013_hidden_weeks.sql" },
   {
     table: "games",
     columns: ["home_rank", "away_rank", "total_points", "frozen_total", "totals_enabled"],

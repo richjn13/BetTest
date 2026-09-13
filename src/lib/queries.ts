@@ -20,6 +20,7 @@ import {
   type Side,
   type User,
   type Week,
+  type WeekState,
 } from "./types";
 
 export class AppError extends Error {}
@@ -273,7 +274,7 @@ export async function removeUser(groupId: string, userId: string): Promise<void>
 // ------------------------------------------------------------------- weeks
 
 const WEEK_COLUMNS =
-  "id, season_year, week_number, season_type, label, sport, opened_at, closed_at";
+  "id, season_year, week_number, season_type, label, sport, opened_at, closed_at, hidden_at";
 
 export async function listWeeks(sport?: Sport): Promise<Week[]> {
   let query = db()
@@ -295,6 +296,7 @@ export async function listOpenedWeeks(sport?: Sport): Promise<Week[]> {
     .from("weeks")
     .select(WEEK_COLUMNS)
     .not("opened_at", "is", null)
+    .is("hidden_at", null)
     .order("season_year")
     .order("week_number");
   if (sport) query = query.eq("sport", sport);
@@ -314,6 +316,7 @@ export async function listPickableWeeks(sport?: Sport): Promise<Week[]> {
     .select(WEEK_COLUMNS)
     .not("opened_at", "is", null)
     .is("closed_at", null)
+    .is("hidden_at", null)
     .order("season_year")
     .order("week_number");
   if (sport) query = query.eq("sport", sport);
@@ -333,6 +336,7 @@ export async function listViewableWeeks(sport?: Sport): Promise<Week[]> {
     .from("weeks")
     .select(WEEK_COLUMNS)
     .not("opened_at", "is", null)
+    .is("hidden_at", null)
     .order("season_year")
     .order("week_number");
   if (sport) query = query.eq("sport", sport);
@@ -368,11 +372,25 @@ async function openWeek(weekId: string): Promise<void> {
 }
 
 /** Closes a week for good, or reopens one closed by mistake. */
-export async function setWeekClosed(weekId: string, closed: boolean): Promise<void> {
+/**
+ * Moves a week between its three states.
+ *
+ * Open takes picks. Closed is finished and still readable. Hidden is off the
+ * app: no tab, no games, no column on the leaderboard, and its points count for
+ * nobody. All three are reversible -- an admin sees every week whatever its
+ * state -- so hiding is never the same as deleting.
+ */
+export async function setWeekState(weekId: string, state: WeekState): Promise<void> {
+  const now = new Date().toISOString();
   unwrap(
     await db()
       .from("weeks")
-      .update({ closed_at: closed ? new Date().toISOString() : null })
+      .update({
+        // A hidden week keeps a closed stamp so unhiding puts it back where it
+        // was rather than reopening it for picks by surprise.
+        closed_at: state === "open" ? null : now,
+        hidden_at: state === "hidden" ? now : null,
+      })
       .eq("id", weekId)
       .select("id"),
   );
@@ -1206,14 +1224,21 @@ export async function getStandings(groupId: string): Promise<{
     listOpenedWeeks(),
   ]);
 
-  const picks = (unwrap<PickWithGame[]>(pickRows) ?? []).map(toScoredPick);
+  // listOpenedWeeks leaves out hidden weeks, and a hidden week counts for
+  // nobody: neither its picks nor an adjustment written against it.
+  const visible = new Set(weeks.map((week) => week.id));
+  const picks = (unwrap<PickWithGame[]>(pickRows) ?? [])
+    .filter((row) => visible.has(row.week_id))
+    .map(toScoredPick);
   const adjustmentRowsTyped =
     unwrap<{ user_id: string; week_id: string | null; points: number }[]>(adjustmentRows) ?? [];
-  const adjustments: Adjustment[] = adjustmentRowsTyped.map((row) => ({
-    userId: row.user_id,
-    weekId: row.week_id,
-    points: Number(row.points),
-  }));
+  const adjustments: Adjustment[] = adjustmentRowsTyped
+    .filter((row) => row.week_id === null || visible.has(row.week_id))
+    .map((row) => ({
+      userId: row.user_id,
+      weekId: row.week_id,
+      points: Number(row.points),
+    }));
 
   return { standings: buildStandings(memberIds, picks, adjustments), members, weeks };
 }

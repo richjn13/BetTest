@@ -32,7 +32,7 @@ import {
   setGameInSlate,
   setGameTotal,
   setTotalsEnabled,
-  setWeekClosed,
+  setWeekState,
 } from "@/lib/queries";
 import { isSport, sportConfig, sportLabel, type Sport } from "@/lib/sports";
 import type { GameStatus, Side } from "@/lib/types";
@@ -180,35 +180,46 @@ export async function removeUserAction(
 }
 
 /**
- * Closes a week, or reopens one closed by mistake. A closed week accepts
- * nothing: no line refresh, no pick, no re-pull.
+ * Moves a week between open, closed and hidden.
+ *
+ * Open takes picks. Closed is finished but still readable, which is most of
+ * what a pool talks about afterwards. Hidden is off the app entirely and counts
+ * for nobody. Every one of them is reversible.
  */
-export async function setWeekClosedAction(
+export async function setWeekStateAction(
   _previous: AdminState,
   form: FormData,
 ): Promise<AdminState> {
   const groupId = text(form, "groupId");
   const weekId = text(form, "weekId");
-  const close = text(form, "close") === "true";
+  const state = text(form, "state");
 
   return run(groupId, async (actor) => {
     if (!weekId) throw new AppError("Pick a week.");
+    if (state !== "open" && state !== "closed" && state !== "hidden") {
+      throw new AppError("Choose open, closed or hidden.");
+    }
+
     const week = await getWeek(weekId);
     if (!week) throw new AppError("That week no longer exists.");
 
-    await setWeekClosed(weekId, close);
+    await setWeekState(weekId, state);
     await logAdminAction({
       groupId,
       actorUserId: actor.id,
       actorUsername: actor.username,
-      action: close ? "close_week" : "reopen_week",
-      note: close ? `${week.label} finalised.` : `${week.label} reopened.`,
-      details: { week: week.label },
+      action: `week_${state}`,
+      note: `${sportLabel(week.sport)} ${week.label} set to ${state}.`,
+      details: { week: week.label, sport: week.sport, state },
     });
 
-    return close
-      ? `${week.label} is closed. Its lines, picks and results are now fixed.`
-      : `${week.label} is open again and will accept changes.`;
+    if (state === "open") {
+      return `${week.label} is open again and will accept picks.`;
+    }
+    if (state === "closed") {
+      return `${week.label} is finished. Everyone can still read it; nothing can change.`;
+    }
+    return `${week.label} is hidden. It is off the app and its points count for nobody.`;
   });
 }
 
