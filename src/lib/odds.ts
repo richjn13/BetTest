@@ -72,29 +72,73 @@ function readQuota(response: Response): Quota {
 
 let lastQuota: Quota = { remaining: null, used: null };
 
+/** What each key last reported, keyed by its last four characters. */
+const quotaByKey = new Map<string, Quota>();
+
 /** Quota counters from the most recent call this process made. */
 export function lastKnownQuota(): Quota {
   return lastQuota;
 }
 
+/** How a key is named in a message: never the key itself. */
+export function keyLabel(key: string): string {
+  return `...${key.slice(-4)}`;
+}
+
+/** What every configured key last reported, for the setup and admin pages. */
+export function quotaPerKey(): { label: string; quota: Quota }[] {
+  return env.oddsApiKeys.map((key) => ({
+    label: keyLabel(key),
+    quota: quotaByKey.get(key) ?? { remaining: null, used: null },
+  }));
+}
+
+/** A key that answered 401, or reported nothing left, is not worth retrying. */
+function spent(quota: Quota): boolean {
+  return quota.remaining !== null && quota.remaining <= 0;
+}
+
+/**
+ * Calls the feed, trying each configured key in turn.
+ *
+ * A key is passed over when it has already told us it has nothing left, and
+ * moved past when it answers 401 (wrong or cancelled) or 429 (out). Anything
+ * else -- a bad request, an outage -- is the same for every key, so it is
+ * raised rather than burning through the list.
+ */
 async function getJson<T>(path: Endpoint, params: Record<string, string> = {}): Promise<T> {
-  const url = oddsApiUrl(path, env.oddsApiKey, params);
+  const keys = env.oddsApiKeys;
+  if (keys.length === 0) throw new OddsApiError("No ODDS_API_KEY is set.", 0);
 
-  const response = await fetch(url, {
-    cache: "no-store",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+  const usable = keys.filter((key) => !spent(quotaByKey.get(key) ?? { remaining: null, used: null }));
+  const order = usable.length > 0 ? usable : keys;
 
-  lastQuota = readQuota(response);
+  let last: unknown;
+  for (const [index, key] of order.entries()) {
+    const response = await fetch(oddsApiUrl(path, key, params), {
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
 
-  if (!response.ok) {
+    const quota = readQuota(response);
+    quotaByKey.set(key, quota);
+    lastQuota = quota;
+
+    if (response.ok) return (await response.json()) as T;
+
     const body = readableError(await response.text().catch(() => ""));
-    throw new OddsApiError(
-      `The Odds API returned ${response.status}${body ? `: ${body}` : ""}`,
+    last = new OddsApiError(
+      `The Odds API returned ${response.status} for key ${keyLabel(key)}` +
+        `${body ? `: ${body}` : ""}`,
       response.status,
     );
+
+    // Only a key-shaped failure is worth trying the next key for.
+    const keyProblem = response.status === 401 || response.status === 429;
+    if (!keyProblem || index === order.length - 1) throw last;
   }
-  return (await response.json()) as T;
+
+  throw last ?? new OddsApiError("Every key was refused.", 401);
 }
 
 /**

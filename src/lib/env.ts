@@ -57,6 +57,23 @@ export const env = {
   get oddsApiKey() {
     return required("ODDS_API_KEY");
   },
+
+  /**
+   * Every key the deployment may use, in order of preference.
+   *
+   * ODDS_API_KEY takes a comma-separated list so a pool run by two people can
+   * use both their accounts: each is that person's own, under their own name,
+   * with its own allowance. One key exhausted no longer stops the app -- the
+   * next one is tried.
+   */
+  get oddsApiKeys(): string[] {
+    const seen = new Set<string>();
+    for (const raw of (process.env.ODDS_API_KEY ?? "").split(",")) {
+      const key = raw.trim();
+      if (key) seen.add(key);
+    }
+    return [...seen];
+  },
   get oddsApiBookmakers(): string[] {
     return (process.env.ODDS_API_BOOKMAKERS ?? "")
       .split(",")

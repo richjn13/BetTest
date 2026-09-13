@@ -2,7 +2,8 @@ import "server-only";
 import { db, unwrap } from "./db";
 import { freezeKickedOffSpreads, gradeResolvedGames } from "./grading";
 import { refreshOdds, refreshScores } from "./odds";
-import { listOpenedWeeks } from "./queries";
+import { scoresFromWeb, scoresUrl } from "./score-source";
+import { applyScrapedScores, getGamesForWeek, listOpenedWeeks } from "./queries";
 import type { Sport } from "./sports";
 
 export type RefreshResult = {
@@ -15,6 +16,8 @@ export type RefreshResult = {
   scoresError: string | null;
   /** True when the run found nothing to fetch and spent no API call. */
   skipped: boolean;
+  /** Scores read off a configured scoreboard page, which cost nothing. */
+  fromPage?: number;
   /** The open week the run was fetching for, if any. */
   waitingOn: string | null;
   /** A database failure, which is a real outage rather than a soft degrade. */
@@ -118,6 +121,42 @@ export async function runRefresh(
   if (weekId) pending = { ...pending, count: Math.max(1, pending.count) };
 
   result.waitingOn = pending.weekLabel;
+
+  // A configured scoreboard page is free and has no monthly allowance, so it
+  // is tried first and the feed only picks up what it could not read.
+  if (pending.count > 0 && scoresUrl(sport)) {
+    try {
+      const live = (await listOpenedWeeks(sport)).filter((entry) => entry.closed_at === null);
+      const targets = weekId ? live.filter((entry) => entry.id === weekId) : live;
+
+      for (const target of targets) {
+        const games = (await getGamesForWeek(target.id))
+          .filter((game) => game.excluded_at === null && game.status !== "final")
+          .map((game) => ({
+            id: game.id,
+            homeTeam: game.home_team,
+            awayTeam: game.away_team,
+          }));
+        if (games.length === 0) continue;
+
+        const page = await scoresFromWeb(sport, games);
+        if (page.error) {
+          result.degraded.push(page.error);
+          continue;
+        }
+        const written = await applyScrapedScores(target.id, page.found);
+        result.scoresUpdated += written.updated;
+        result.fromPage = (result.fromPage ?? 0) + written.updated;
+      }
+
+      // Everything the page could read is in. Only ask the feed if something
+      // is still outstanding.
+      pending = await pendingScores(new Date(), sport);
+      if (weekId) pending = { ...pending, count: Math.max(0, pending.count) };
+    } catch (error) {
+      result.degraded.push(describe(error));
+    }
+  }
 
   if (pending.count > 0) {
     // Only reach for the historical window when something is genuinely old

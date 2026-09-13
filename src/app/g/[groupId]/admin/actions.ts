@@ -8,6 +8,7 @@ import { pullLinesWithClaude } from "@/lib/claude-odds";
 import { fetchPollFromWeb } from "@/lib/poll-source";
 import { parsePastedPoll } from "@/lib/rankings";
 import { pullLinesFromFeed, pullTotalsFromFeed, type Quota } from "@/lib/odds";
+import { scoresFromWeb, scoresUrl } from "@/lib/score-source";
 import { runRefresh } from "@/lib/refresh";
 import {
   AppError,
@@ -23,7 +24,9 @@ import {
   regenerateJoinCode,
   removeUser,
   setAdmin,
+  applyScrapedScores,
   applyTotals,
+  getGamesForWeek,
   getStoredPoll,
   savePoll,
   setGameInSlate,
@@ -888,6 +891,66 @@ export async function syncScoresAction(
       `${result.scoresUpdated === 1 ? "" : "s"} updated, ` +
       `${result.graded ?? 0} pick${result.graded === 1 ? "" : "s"} graded` +
       `${result.frozen ? `, ${result.frozen} lines frozen at kickoff` : ""}.`
+    );
+  });
+}
+
+/**
+ * Reads scores off the configured scoreboard page for one week, and says what
+ * it matched. This is the button to press after setting a URL: it spends no
+ * odds-feed call and names every game it could not read, so a page that does
+ * not suit shows itself immediately.
+ */
+export async function scrapeScoresAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const weekId = text(form, "weekId");
+
+  return run(groupId, async (actor) => {
+    const week = await requireOpenWeek(weekId);
+    if (!scoresUrl(week.sport)) {
+      throw new AppError(
+        `No scores page is set for ${sportLabel(week.sport)}. Add NCAAF_SCORES_URL or ` +
+          "NFL_SCORES_URL in Vercel, or SCORES_URL for a page covering both, then redeploy.",
+      );
+    }
+
+    const games = (await getGamesForWeek(week.id))
+      .filter((game) => game.excluded_at === null)
+      .map((game) => ({ id: game.id, homeTeam: game.home_team, awayTeam: game.away_team }));
+
+    const page = await scoresFromWeb(week.sport, games);
+    if (page.error) throw new AppError(page.error);
+
+    const written = await applyScrapedScores(week.id, page.found);
+    const regraded = await gradeResolvedGames();
+
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: "scrape_scores",
+      note: `Scores read from the page for ${sportLabel(week.sport)} ${week.label}.`,
+      details: {
+        url: page.url,
+        matched: page.found.length,
+        missed: page.missed.length,
+        ...written,
+      },
+    });
+
+    const missed =
+      page.missed.length > 0
+        ? ` Could not read ${page.missed.length}: ${page.missed.slice(0, 6).join("; ")}` +
+          `${page.missed.length > 6 ? ", and more" : ""}.`
+        : "";
+
+    return (
+      `Read ${page.found.length} of ${games.length} games from the page. ` +
+      `${written.updated} updated, ${written.unchanged} already current, ` +
+      `${regraded} picks graded. No odds-feed call spent.${missed}`
     );
   });
 }

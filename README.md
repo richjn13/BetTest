@@ -597,6 +597,32 @@ windows, which covers the times nobody has the app open. Treat it as a backstop
 rather than the mechanism: GitHub's scheduler is best-effort and drops runs
 under load -- three were due in one hour here and one arrived.
 
+**Scores can come from a free page instead.** Set any of these in Vercel and
+scores are read from a public scoreboard for nothing, with the feed left as a
+fallback for whatever the page did not say:
+
+| Variable | What it covers |
+| --- | --- |
+| `NCAAF_SCORES_URL` | A page listing college scores |
+| `NFL_SCORES_URL` | A page listing NFL scores |
+| `SCORES_URL` | One page covering both, used when the specific one is unset |
+
+The reading does not depend on the page's markup, which is nobody's contract.
+It reduces the page to text and searches it for the games it already has, and a
+game only counts when the text holding both team names also holds a number
+straight after each of them. Anything less is left alone: no score is far
+better than a wrong one, which would mis-grade everybody.
+
+Press **Scores from page** under Admin → Update a week after setting a URL. It
+spends no call and names every game it could not read, so a page that does not
+suit shows itself in one press.
+
+**Two people can use two keys.** `ODDS_API_KEY` takes a comma-separated list,
+and a key with nothing left is passed over for the next. Each key must be its
+owner's own account under their own name -- that is the point of the feature,
+and signing up repeatedly to dodge one allowance is against the terms of the
+service and gets all of them cancelled together.
+
 **The cost is odds-feed calls.** Each run that finds a game waiting on a score
 spends one call per sport. The windows in `.github/workflows/scores.yml` come
 to about 68 runs a week, which lands near 300 to 400 calls a month with both

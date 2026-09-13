@@ -31,6 +31,7 @@ import {
   removeUserAction,
   setAdminAction,
   savePollAction,
+  scrapeScoresAction,
   setWeekClosedAction,
   syncScoresAction,
   syncOddsAction,
@@ -578,6 +579,7 @@ function UpdateSection({
 }) {
   const [scoreState, pullScores] = useFormState(syncScoresAction, IDLE);
   const [oddsState, pullOdds] = useFormState(syncOddsAction, IDLE);
+  const [pageState, pullFromPage] = useFormState(scrapeScoresAction, IDLE);
 
   // Only a week that is open can receive anything, so only those are offered.
   const open = weeks.filter((week) => week.opened_at && !week.closed_at);
@@ -596,6 +598,7 @@ function UpdateSection({
     <div className="space-y-3">
       <Feedback state={scoreState} />
       <Feedback state={oddsState} />
+      <Feedback state={pageState} />
       <p className="text-sm text-muted">
         Scores update on their own every half hour while games are on. These are
         for when you would rather not wait, or a line moved and you want it now.
@@ -633,13 +636,23 @@ function UpdateSection({
             Update odds
           </SubmitButton>
         </form>
+
+        <form action={pullFromPage}>
+          <input type="hidden" name="groupId" value={groupId} />
+          <input type="hidden" name="weekId" value={weekId} />
+          <SubmitButton className="btn" pendingLabel="Reading...">
+            Scores from page
+          </SubmitButton>
+        </form>
       </div>
 
       <QuotaLine quota={quota} />
       <p className="text-xs text-muted">
         Pull scores also freezes any line whose kickoff has passed and regrades
         what resolved. Update odds moves loose spreads and brings flexed kickoffs
-        current; a locked line keeps its number.
+        current; a locked line keeps its number. Scores from page reads the
+        scoreboard page set in NCAAF_SCORES_URL, NFL_SCORES_URL or SCORES_URL,
+        spends no call at all, and names every game it could not read.
       </p>
     </div>
   );

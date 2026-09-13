@@ -12,6 +12,7 @@ import {
   type TotalSide,
   type AdminAction,
   type Game,
+  type GameStatus,
   type GameCard,
   type Group,
   type Pick,
@@ -871,6 +872,60 @@ async function editableGame(gameId: string) {
     throw new AppError("This game has already kicked off, so its total is fixed.");
   }
   return game;
+}
+
+/**
+ * Writes scores read off a scoreboard page.
+ *
+ * A game an admin corrected by hand is left alone, exactly as the feed leaves
+ * it: a correction outranks anything automatic. A game whose score already
+ * matches is skipped rather than rewritten.
+ */
+export async function applyScrapedScores(
+  weekId: string,
+  scores: { gameId: string; home: number; away: number; final: boolean }[],
+): Promise<{ updated: number; unchanged: number }> {
+  await assertWeekOpen(weekId);
+
+  const games = new Map((await getGamesForWeek(weekId)).map((game) => [game.id, game]));
+  const counts = { updated: 0, unchanged: 0 };
+  const writes: { id: string; home: number; away: number; status: GameStatus }[] = [];
+
+  for (const score of scores) {
+    const game = games.get(score.gameId);
+    if (!game || game.score_overridden_at) continue;
+
+    const status: GameStatus = score.final ? "final" : "live";
+    if (
+      game.final_home_score === score.home &&
+      game.final_away_score === score.away &&
+      game.status === status
+    ) {
+      counts.unchanged += 1;
+      continue;
+    }
+    writes.push({ id: game.id, home: score.home, away: score.away, status });
+  }
+
+  const results = await Promise.all(
+    writes.map((write) =>
+      db()
+        .from("games")
+        .update({
+          final_home_score: write.home,
+          final_away_score: write.away,
+          status: write.status,
+        })
+        .eq("id", write.id)
+        .is("score_overridden_at", null)
+        .select("id"),
+    ),
+  );
+  for (const result of results) {
+    if (!result.error && result.data && result.data.length > 0) counts.updated += 1;
+  }
+
+  return counts;
 }
 
 /** Saves or changes an over/under pick. */
