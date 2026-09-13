@@ -547,8 +547,13 @@ games you did pull.
 
 ### The picks page
 
-Across the top: **All · NCAA · NFL**. NCAA is where you land, since its weekend
-comes first. **All** stacks both open weeks in one scroll, college above the
+Across the top: **All · NCAA · NFL**. You land on whichever is being played:
+college on a Saturday, the NFL on a Sunday, and on a Thursday or Monday night
+whichever has the game. That is worked out from the games themselves rather
+than from the day of the week, so a Friday college game or a bowl in January
+needs no special case, and a football day runs from four in the morning
+Eastern, which keeps a Saturday night game on Saturday. A game under way wins
+over one still to come; with nothing on, college leads as before. **All** stacks both open weeks in one scroll, college above the
 NFL, with a labelled rule between them. Each competition keeps its own board,
 its own picked count and its own lock, because they are separate weeks with
 separate rules. Games stay in kickoff order throughout.

@@ -7,6 +7,7 @@ import {
 } from "@/lib/queries";
 import { refreshScoresIfStale } from "@/lib/live";
 import { isSport, sportLabel, type Sport } from "@/lib/sports";
+import { sportInPlay, type DaySlate } from "@/lib/today";
 import { PicksView, type Scope } from "./PicksView";
 import { PicksBoard } from "./PicksBoard";
 import { WeekNotice } from "./WeekNotice";
@@ -50,14 +51,6 @@ export default async function PicksPage({
     );
   }
 
-  const requested = searchParams.sport;
-  const scope: Scope =
-    requested === "all" && sports.length > 1
-      ? "all"
-      : isSport(requested) && sports.includes(requested)
-        ? requested
-        : (sports[0] ?? "nfl");
-
   // Every competition is loaded, whichever tab is showing. The All view needed
   // both anyway, and having both here is what lets the tabs switch without
   // going back to the server.
@@ -79,6 +72,7 @@ export default async function PicksPage({
       if (!week) {
         return {
           sport,
+          games: [],
           content: (
             <div className="card p-6 text-center">
               <p className="text-sm font-medium">No {sportLabel(sport)} week yet.</p>
@@ -94,6 +88,13 @@ export default async function PicksPage({
 
       return {
         sport,
+        // Kept for the tab choice below: which competition is playing today is
+        // decided from the games already on the page, not from the day of the
+        // week and not from another query.
+        games: board.map((card) => ({
+          kickoff: card.game.kickoff_time,
+          status: card.game.status,
+        })),
         content: (
           <>
             <WeekTabs
@@ -124,6 +125,17 @@ export default async function PicksPage({
       };
     }),
   );
+
+  // Open on whatever is being played. Landing on college on a Sunday
+  // afternoon is a tap wasted every single time.
+  const requested = searchParams.sport;
+  const playing = sportInPlay(sections as DaySlate[]);
+  const scope: Scope =
+    requested === "all" && sports.length > 1
+      ? "all"
+      : isSport(requested) && sports.includes(requested)
+        ? requested
+        : (playing ?? sports[0] ?? "nfl");
 
   return (
     <div>
