@@ -577,9 +577,9 @@ says so at arm's length.
 
 **While a game is on, your pick shades itself.** The side you took turns green
 when it is covering the line right now and red when it is not, and the pill at
-the top of the card says *Up 7 · so far* or *Down 7 · so far*. Nothing fills while a game is on -- only the box you
-picked is tinted, with dashed borders rather than the solid filled card a
-result gets -- so a scoreline in progress can never be mistaken for a verdict. The numbers are against the line, not the scoreboard: a team
+the top of the card says *Up 7 · so far* or *Down 7 · so far*. Nothing else on the card changes while a game is on: no
+bar down the edge, no fill. Only the box you picked is tinted, which keeps a
+filled card meaning one thing, that the game is over. The numbers are against the line, not the scoreboard: a team
 leading by three while giving seven is down four.
 
 Only the side you picked is shaded. The question the colour answers is "how am

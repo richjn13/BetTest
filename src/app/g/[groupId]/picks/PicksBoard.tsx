@@ -219,9 +219,10 @@ function GameRow({
 
   // A settled game is settled, so it says so with the whole card: filled green
   // for a win, red for a loss, and a solid bar down the side on top of that.
-  // A game still being played never fills -- it only ever tints the side you
-  // picked, with dashed borders -- so a result and a scoreline in progress can
-  // never be mistaken for one another at arm's length.
+  //
+  // A game still being played gets nothing at the card level. Its colour is on
+  // the box you picked and in the words on the pill, which is enough to read
+  // and leaves the filled card meaning one thing only: this is over.
   const shell =
     outcome.verdict === "win"
       ? "border-[rgb(var(--win))]/45 bg-[rgb(var(--win))]/[0.13] " +
@@ -231,13 +232,7 @@ function GameRow({
           "border-l-4 border-l-[rgb(var(--loss))]"
         : outcome.verdict === "push"
           ? "border-l-4 border-l-edge"
-          : standing === null
-            ? ""
-            : standing.state === "ahead"
-              ? "border-l-4 border-dashed border-l-[rgb(var(--win))]/70"
-              : standing.state === "behind"
-                ? "border-l-4 border-dashed border-l-[rgb(var(--loss))]/70"
-                : "border-l-4 border-dashed border-l-edge";
+          : "";
 
   const verdictTone =
     outcome.verdict === "win"
@@ -522,11 +517,11 @@ function SideButton({
       className={`flex min-h-[56px] items-center justify-between gap-2 rounded-lg border
         px-3 py-2 text-left transition-colors disabled:cursor-default ${
           live === "ahead"
-            ? "border-dashed border-[rgb(var(--win))]/60 bg-[rgb(var(--win))]/[0.10]"
+            ? "border-[rgb(var(--win))]/60 bg-[rgb(var(--win))]/[0.10]"
             : live === "behind"
-              ? "border-dashed border-[rgb(var(--loss))]/60 bg-[rgb(var(--loss))]/[0.08]"
+              ? "border-[rgb(var(--loss))]/60 bg-[rgb(var(--loss))]/[0.08]"
               : live === "level"
-                ? "border-dashed border-edge bg-raised"
+                ? "border-edge bg-raised"
                 : selected
             ? "border-accent bg-accent/10"
             : covered
@@ -594,15 +589,15 @@ function StatusPill({
   }
 
   // While the game is on, say where the pick stands and that it is not over.
-  // "Up 7" and "Down 7" are about the line, not the scoreboard, and the dotted
-  // ring says the same thing the dashed edge does: this can still change.
+  // "Up 7" and "Down 7" are about the line, not the scoreboard, and "so far"
+  // is what carries that this can still change.
   if (standing !== null) {
     const tone =
       standing.state === "ahead"
-        ? "bg-[rgb(var(--win))]/12 text-[rgb(var(--win))] ring-[rgb(var(--win))]/40"
+        ? "bg-[rgb(var(--win))]/12 text-[rgb(var(--win))]"
         : standing.state === "behind"
-          ? "bg-[rgb(var(--loss))]/10 text-[rgb(var(--loss))] ring-[rgb(var(--loss))]/40"
-          : "bg-edge text-muted ring-edge";
+          ? "bg-[rgb(var(--loss))]/10 text-[rgb(var(--loss))]"
+          : "bg-edge text-muted";
     const words =
       standing.state === "ahead"
         ? `Up ${formatPoints(standing.margin)}`
@@ -611,7 +606,7 @@ function StatusPill({
           : "On the number";
 
     return (
-      <span className={`${pill} ring-1 ring-dotted ${tone}`} title="Against the line, so far">
+      <span className={`${pill} ${tone}`} title="Against the line, so far">
         {words} · so far
       </span>
     );
