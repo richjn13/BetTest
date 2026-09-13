@@ -2,7 +2,8 @@ import { Avatar } from "@/components/Avatar";
 import { sportConfig } from "@/lib/sports";
 import { requireViewer } from "@/lib/auth";
 import { getStandings } from "@/lib/queries";
-import { formatPoints } from "@/lib/format";
+import { formatPoints, shortDate } from "@/lib/format";
+import { groupIntoWeekends } from "@/lib/weekend";
 import type { WeekTotals } from "@/lib/scoring";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +33,11 @@ export default async function LeaderboardPage({ params }: { params: { groupId: s
     return <p className="card p-6 text-center text-sm text-muted">No members yet.</p>;
   }
 
-  // Week 1 first, then ascending. Reading left to right follows the season.
-  const columns = weeks;
+  // One column a weekend, not one a league week. The sports number their weeks
+  // from different starting points, so NFL week 1 and college week 2 are the
+  // same Saturday and Sunday; for a pool that plays both, that is one score.
+  // Earliest first, so reading left to right follows the season.
+  const columns = groupIntoWeekends(weeks);
 
   // Equal points and equal non-lock wins share a rank.
   let lastKey = "";
@@ -51,12 +55,22 @@ export default async function LeaderboardPage({ params }: { params: { groupId: s
     return { standing, rank, byWeek, isViewer: standing.userId === user.id };
   });
 
+  // A weekend's score is both competitions added together, and counts only
+  // where the member actually had a graded pick -- an empty cell stays empty
+  // rather than becoming a zero nobody earned.
+  const pointsFor = (byWeek: Map<string, WeekTotals>, weekIds: string[]) => {
+    const played = weekIds.map((id) => byWeek.get(id)).filter((entry) => entry !== undefined);
+    if (played.length === 0) return null;
+    return played.reduce((sum, entry) => sum + entry!.points, 0);
+  };
+
   const best = new Map<string, number>();
-  for (const week of columns) {
+  for (const weekend of columns) {
+    const ids = weekend.weeks.map((week) => week.id);
     const scores = rows
-      .map((row) => row.byWeek.get(week.id)?.points ?? null)
+      .map((row) => pointsFor(row.byWeek, ids))
       .filter((points): points is number => points !== null);
-    if (scores.length > 0) best.set(week.id, Math.max(...scores));
+    if (scores.length > 0) best.set(weekend.key, Math.max(...scores));
   }
 
   const you = rows.find((row) => row.isViewer);
@@ -97,7 +111,8 @@ export default async function LeaderboardPage({ params }: { params: { groupId: s
       <header>
         <h2 className="text-lg font-semibold tracking-tight">Standings</h2>
         <p className="text-sm text-muted">
-          Highest total first. Ties broken by most correct non-lock picks.
+          Highest total first. Ties broken by most correct non-lock picks. Each
+          column is one weekend, both competitions added together.
         </p>
       </header>
 
@@ -119,15 +134,20 @@ export default async function LeaderboardPage({ params }: { params: { groupId: s
               >
                 Total
               </th>
-              {columns.map((week) => (
+              {columns.map((weekend) => (
                 <th
-                  key={week.id}
+                  key={weekend.key}
                   scope="col"
+                  title={weekend.weeks
+                    .map((week) => `${sportConfig(week.sport).short} ${week.label}`)
+                    .join(" + ")}
                   className="px-3 py-2 text-right text-xs font-semibold uppercase
                              tracking-wide text-muted"
                 >
-                  {/* Both sports number their weeks, so say which is which. */}
-                  {sportConfig(week.sport).short} {week.week_number}
+                  <span className="block text-ink">{weekend.number}</span>
+                  <span className="block font-normal normal-case tracking-normal">
+                    {shortDate(weekend.played)}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -161,38 +181,44 @@ export default async function LeaderboardPage({ params }: { params: { groupId: s
                   </span>
                 </td>
 
-                {columns.map((week) => {
-                  const totals = byWeek.get(week.id);
-                  const isBest =
-                    totals !== undefined &&
-                    totals.points > 0 &&
-                    best.get(week.id) === totals.points;
+                {columns.map((weekend) => {
+                  // One cell, both competitions. A member who played only one
+                  // of them still gets a number, made of what they played.
+                  const played = weekend.weeks
+                    .map((week) => byWeek.get(week.id))
+                    .filter((entry): entry is WeekTotals => entry !== undefined);
+
+                  const points = played.reduce((sum, entry) => sum + entry.points, 0);
+                  const correct = played.reduce((sum, entry) => sum + entry.correct, 0);
+                  const graded = played.reduce((sum, entry) => sum + entry.graded, 0);
+                  const pending = played.reduce((sum, entry) => sum + entry.pending, 0);
+                  const isBest = points > 0 && best.get(weekend.key) === points;
 
                   return (
                     <td
-                      key={week.id}
+                      key={weekend.key}
                       className="border-t border-edge px-3 py-3 text-right font-mono
                                  tabular-nums"
                     >
-                      {totals === undefined ? (
+                      {played.length === 0 ? (
                         <span className="text-muted">&mdash;</span>
                       ) : (
                         <span
                           className={
                             isBest
                               ? "rounded bg-emerald-500/15 px-1.5 py-0.5 font-semibold text-emerald-600 dark:text-emerald-400"
-                              : totals.points > 0
+                              : points > 0
                                 ? "text-ink"
                                 : "text-muted"
                           }
                           title={
-                            totals.pending > 0
-                              ? `${totals.correct}/${totals.graded} correct, ${totals.pending} still to grade`
-                              : `${totals.correct}/${totals.graded} correct`
+                            pending > 0
+                              ? `${correct}/${graded} correct, ${pending} still to grade`
+                              : `${correct}/${graded} correct`
                           }
                         >
-                          {formatPoints(totals.points)}
-                          {totals.pending > 0 && (
+                          {formatPoints(points)}
+                          {pending > 0 && (
                             <span className="ml-0.5 text-[10px] text-muted">*</span>
                           )}
                         </span>

@@ -566,6 +566,20 @@ is on, the line sits above the live score; when it is over, the line is the
 number the pick was graded against, sitting beside the final. The over/under
 row shows its number and the combined score next to it.
 
+### One weekend, one score
+
+The two competitions number their weeks from different starting points, so NFL
+week 1 and college week 2 are the same Saturday and Sunday. For a pool that
+plays both, that is one weekend and one score, and the leaderboard treats it
+that way: a column per weekend, numbered by the pool's own order rather than by
+either league's, with both competitions added together in each cell.
+
+The grouping is worked out from the calendar, not set by hand. Every week has a
+main game day, and the Tuesday before it is the same Tuesday for both sports of
+the same weekend, so that is what pairs them. A weekend only one competition
+played is still a column; a member who picked only one of them still gets a
+number, made of what they picked.
+
 ### Score updates, and what they cost
 
 Scores update two ways, and neither involves Claude or costs a token.
