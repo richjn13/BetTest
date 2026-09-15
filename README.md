@@ -518,7 +518,11 @@ poll with a web search on every college pull, which is what made an NCAA pull
 slow and expensive next to an instant NFL one.
 
 **Rankings are stored once a week**, in the Rankings box under Pull NCAA, and
-neither way of getting them costs a token. **Read them from ncaa.com** fetches
+neither way of getting them costs a token. Saving a poll fills in that week's
+games straight away, so the order does not matter: pull the slate and then save
+the poll, or the other way round. The box says which week it is saving against,
+which is the newest NCAA week you have pulled, and the result says how many
+games picked up a ranking. **Read them from ncaa.com** fetches
 the AP rankings page and parses it here. **Paste the Top 25** takes a poll
 copied from anywhere: each line needs a number and a school, and records, vote
 totals and brackets are ignored.

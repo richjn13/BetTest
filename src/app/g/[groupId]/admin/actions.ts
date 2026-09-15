@@ -24,6 +24,7 @@ import {
   regenerateJoinCode,
   removeUser,
   setAdmin,
+  applyPollToGames,
   applyScrapedScores,
   applyTotals,
   getGamesForWeek,
@@ -462,6 +463,20 @@ function quotaNote(quota: Quota | undefined): string {
   return ` ${quota.remaining}${allowance} monthly odds-feed calls left.`;
 }
 
+/** What storing a poll did to the games already pulled for that week. */
+function rankNote(applied: { ranked: number; games: number }, weekNumber: number): string {
+  if (applied.games > 0) {
+    return ` ${applied.games} game${applied.games === 1 ? "" : "s"} in week ${weekNumber} now show a ranking.`;
+  }
+  if (applied.ranked > 0) {
+    return ` Week ${weekNumber}'s games already showed these rankings.`;
+  }
+  return (
+    ` No game in week ${weekNumber} has a ranked team in it, so nothing changed. ` +
+    "If you pulled a different week, save the poll against that one."
+  );
+}
+
 /** "Cost 4,120 tokens." Said plainly, because nobody should have to guess. */
 function tokenNote(input: number, output: number): string {
   const total = input + output;
@@ -696,16 +711,28 @@ export async function savePollAction(
     }
 
     await savePoll(seasonYear, weekNumber, entries, "pasted");
+    const applied = await applyPollToGames(seasonYear, weekNumber, entries);
+
     await logAdminAction({
       groupId,
       actorUserId: actor.id,
       actorUsername: actor.username,
       action: "save_poll",
       note: `AP Top 25 stored for ${seasonYear} week ${weekNumber}.`,
-      details: { seasonYear, weekNumber, ranked: entries.length, source: "pasted" },
+      details: {
+        seasonYear,
+        weekNumber,
+        source: "pasted",
+        inPoll: entries.length,
+        gamesRanked: applied.ranked,
+        gamesUpdated: applied.games,
+      },
     });
 
-    return `Stored ${entries.length} ranked teams, top of the list ${entries[0].team}. Pulls of this week will use them for nothing.`;
+    return (
+      `Stored ${entries.length} ranked teams, top of the list ${entries[0].team}.` +
+      rankNote(applied, weekNumber)
+    );
   });
 }
 
@@ -730,16 +757,28 @@ export async function fetchPollAction(
     }
 
     await savePoll(seasonYear, weekNumber, found.entries, "ncaa.com");
+    const applied = await applyPollToGames(seasonYear, weekNumber, found.entries);
+
     await logAdminAction({
       groupId,
       actorUserId: actor.id,
       actorUsername: actor.username,
       action: "save_poll",
       note: `AP Top 25 read from the rankings page for ${seasonYear} week ${weekNumber}.`,
-      details: { seasonYear, weekNumber, ranked: found.entries.length, url: found.url },
+      details: {
+        seasonYear,
+        weekNumber,
+        url: found.url,
+        inPoll: found.entries.length,
+        gamesRanked: applied.ranked,
+        gamesUpdated: applied.games,
+      },
     });
 
-    return `Read ${found.entries.length} ranked teams, top of the list ${found.entries[0].team}. No tokens spent. Pulls of this week now use them for nothing.`;
+    return (
+      `Read ${found.entries.length} ranked teams, top of the list ${found.entries[0].team}. ` +
+      `No tokens spent.` + rankNote(applied, weekNumber)
+    );
   });
 }
 

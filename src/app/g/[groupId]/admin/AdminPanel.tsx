@@ -482,13 +482,18 @@ function RankingsSection({
       <Feedback state={fetchState} />
       <p className="text-sm text-muted">
         The odds feed carries no poll, so rankings are stored here, once a week.
-        A pull then shows them for nothing. Without one, a pull still works and
-        simply shows no rankings.
+        Saving them fills in the games of that week straight away, so it does
+        not matter whether you do this before or after pulling the slate.
       </p>
       <p className="text-sm">
         {stored
           ? `Week ${weekNumber} has ${stored.ranked} ranked teams stored (${stored.source}).`
           : `Nothing stored for week ${weekNumber} yet.`}
+      </p>
+      <p className="text-xs text-muted">
+        This saves against <strong>week {weekNumber}</strong>, the newest NCAA
+        week you have pulled. Rankings belong to one week, so pull a week first
+        and then save that week&apos;s poll.
       </p>
 
       <form action={save} className="space-y-2">

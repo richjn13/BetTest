@@ -7,7 +7,7 @@ import { weekLabel } from "./format";
 import { buildStandings, type Adjustment, type ScoredPick, type Standing } from "./scoring";
 import { SPORTS, type Sport } from "./sports";
 import type { ProposedGame } from "./claude-odds-validate";
-import type { PollEntry } from "./rankings";
+import { rankFor, type PollEntry } from "./rankings";
 import {
   isGameOpen,
   type TotalSide,
@@ -590,6 +590,67 @@ export async function savePoll(
       )
       .select("season_year"),
   );
+}
+
+/**
+ * Puts a poll onto the games of that week, for the ones already there.
+ *
+ * Rankings used to be written only while a pull was running, from a poll
+ * stored beforehand, so the obvious order -- pull the games, then go and get
+ * the poll -- left every game unranked with a re-pull as the only cure.
+ * Saving a poll now fills in the slate it belongs to, whenever it is saved.
+ *
+ * Frozen games are left alone: their ranking is part of the week as it was
+ * played.
+ */
+export async function applyPollToGames(
+  seasonYear: number,
+  weekNumber: number,
+  entries: PollEntry[],
+): Promise<{ ranked: number; games: number }> {
+  const week = unwrap<{ id: string } | null>(
+    await db()
+      .from("weeks")
+      .select("id")
+      .eq("sport", "ncaaf")
+      .eq("season_year", seasonYear)
+      .eq("week_number", weekNumber)
+      .maybeSingle(),
+  );
+  if (!week) return { ranked: 0, games: 0 };
+
+  const games = await getGamesForWeek(week.id);
+  const writes: { id: string; home: number | null; away: number | null }[] = [];
+
+  for (const game of games) {
+    if (game.spread_frozen_at) continue;
+    const home = rankFor(game.home_team, entries);
+    const away = rankFor(game.away_team, entries);
+    if (home === game.home_rank && away === game.away_rank) continue;
+    writes.push({ id: game.id, home, away });
+  }
+
+  const results = await Promise.all(
+    writes.map((write) =>
+      db()
+        .from("games")
+        .update({ home_rank: write.home, away_rank: write.away })
+        .eq("id", write.id)
+        .is("spread_frozen_at", null)
+        .select("id"),
+    ),
+  );
+
+  const changed = results.filter(
+    (result) => !result.error && (result.data?.length ?? 0) > 0,
+  ).length;
+
+  return {
+    ranked: games.filter(
+      (game) => rankFor(game.home_team, entries) !== null || rankFor(game.away_team, entries) !== null,
+    ).length,
+    games: changed,
+  };
 }
 
 // ------------------------------------------------------------------- games
