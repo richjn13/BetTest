@@ -80,6 +80,28 @@ export const env = {
       .map((key) => key.trim().toLowerCase())
       .filter(Boolean);
   },
+  /**
+   * How the two browsers find a path to each other. The public STUN servers
+   * are free and enough for most home-to-phone connections; a relay (TURN) is
+   * the fallback when a network refuses to let two peers talk directly, and a
+   * relay carries the video, so it is the one part of this that can cost money.
+   * Left unset, there is no relay and a stubborn network simply fails to
+   * connect -- which is the cheap default, on purpose.
+   */
+  get dogcamIceServers(): { urls: string | string[]; username?: string; credential?: string }[] {
+    const servers: { urls: string | string[]; username?: string; credential?: string }[] = [
+      { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    ];
+    const turn = process.env.DOGCAM_TURN_URL?.trim();
+    if (turn) {
+      servers.push({
+        urls: turn.split(",").map((url) => url.trim()).filter(Boolean),
+        username: process.env.DOGCAM_TURN_USERNAME?.trim(),
+        credential: process.env.DOGCAM_TURN_CREDENTIAL?.trim(),
+      });
+    }
+    return servers;
+  },
   get hasOddsApiKey() {
     return Boolean(process.env.ODDS_API_KEY);
   },

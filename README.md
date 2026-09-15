@@ -1065,6 +1065,89 @@ npm test        # 75 tests
 npm run build
 ```
 
+# Dog cam
+
+A live look at the dog while you are at work, using devices you already own.
+One device stays home with its camera on; you open the same site from anywhere
+and watch. It rides along in this app because it is the same deployment, the
+same database, and the same login on your Home Screen -- there was nothing to
+set up twice.
+
+The picture goes **straight from the device at home to the one in your hand**.
+It is not uploaded, not recorded, and does not pass through Vercel or Supabase.
+Watching all day costs nothing. All the server ever does is pass a few lines of
+text while the two devices work out how to reach each other, which is a handful
+of rows that delete themselves two minutes later.
+
+## Turning it on
+
+1. Run `supabase/migrations/0014_dogcam.sql` in the Supabase SQL editor, the
+   same way you ran the others.
+2. In Vercel, add an environment variable `DOGCAM_PASSCODE` and set it to a
+   passcode of your choosing. Redeploy.
+
+Until that passcode is set, `/dogcam` says it is switched off and nothing works
+-- on purpose, since these pages look inside your house and the link alone
+should never be enough. The passcode is asked for once per device and
+remembered for a month. Changing it signs every device out.
+
+## Setting up a camera
+
+On the device you are leaving at home -- an old phone, a spare tablet -- open
+`/dogcam`, type a name like `Living room`, and tap **Set up as camera**. Allow
+the camera and microphone when the browser asks, then tap **Start camera**. It
+shows up on the hub for everyone else at once. Do the same on a second device
+for the bedroom.
+
+For it to still be there at three in the afternoon, that device has to be:
+
+- **Plugged in.** A camera held open drains a battery in a few hours.
+- **Set to never sleep.** Settings -> Display & Brightness -> Auto-Lock ->
+  Never.
+- **Sitting on its camera page, with nothing on top of it.** Turn the
+  brightness right down if the light bothers the dog; the camera keeps running.
+
+That last point is the real limitation and it is worth being blunt about: no
+web page can wake a sleeping iPad or switch its camera on from across town.
+Apple does not allow it, and no amount of code here changes that. If the screen
+locks or another app covers the page, the camera stops until somebody at home
+touches the device. If leaving a tablet awake all day is not something you want
+to do, a $30 plug-in camera is the honest answer -- this is for using hardware
+you already have.
+
+## Watching
+
+Open `/dogcam` from anywhere, tap **Watch** next to a camera, and the picture
+starts in a second or two. Sound starts off, because no browser will play sound
+until you ask for it -- tap **Sound**.
+
+Once the picture is up, three buttons talk directly to the device at home, with
+no server in between:
+
+- **Turn off** stops the camera at the other end. The light goes out, nothing is
+  being sent, and **Turn on** starts it again -- so you can check on him, see he
+  is fine, and shut the camera down without walking anyone through it at home.
+- **Flip lens** swaps between the front and back camera, which saves propping
+  the tablet the other way round.
+- **Snapshot** saves the current frame to your phone.
+
+If the camera does not answer within about twelve seconds, the page says so
+plainly: the device at home is asleep, or its page is closed or covered.
+
+## What it costs, honestly
+
+Nothing, on the free tiers, for two cameras and one watcher. The video is
+direct, and the only server traffic is a check-in every thirty seconds from
+each camera plus a short burst while a connection is being set up.
+
+The one exception: a few networks -- locked-down office and guest Wi-Fi in
+particular -- block two devices from talking directly. Getting through those
+needs a relay, which carries every frame and is billed by the gigabyte. None is
+configured, so on such a network the connection simply fails rather than
+quietly running up a bill. If you hit that at work, try your phone on cellular
+first; if it is only the office Wi-Fi that fails, `DOGCAM_TURN_URL` in
+`.env.example` is where a relay would go.
+
 # Layout
 
 ```
@@ -1074,6 +1157,8 @@ src/app/setup       configuration check, reachable without signing in
 src/app/join        create a group, join one, or sign in
 src/app/g/[id]      picks board, leaderboard, admin panel
 src/app/api/cron    the scheduled refresh endpoint
+src/app/dogcam      the dog camera: hub, camera device, viewer
+src/app/api/dogcam  presence and the WebRTC handshake postbox
 supabase/           the schema, plus a destructive reset script
 ```
 
@@ -1090,3 +1175,7 @@ and standings, `nfl-week.ts` for turning a kickoff time into a week number,
   supply them. Set `NFL_WEEK1_TUESDAY` to a date like `2026-09-08` to override a
   season that breaks the rule.
 - Kickoff reminders and push notifications are not built.
+- The dog camera cannot wake a sleeping device or start its camera remotely; no
+  web page can. The device at home must be awake with its page in front.
+- Nothing from the camera is recorded, so there is no history to scroll back
+  through -- only what is happening right now.
