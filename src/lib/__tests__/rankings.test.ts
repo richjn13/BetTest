@@ -6,6 +6,7 @@ import {
   pollInForce,
   rankFor,
   readPoll,
+  weeksGovernedByPoll,
 } from "../rankings";
 
 const poll = [
@@ -155,5 +156,36 @@ describe("pollInForce", () => {
 
   it("returns nothing when no poll is stored at all", () => {
     expect(pollInForce([], 3)).toBe(null);
+  });
+});
+
+describe("weeksGovernedByPoll", () => {
+  const weeks = [1, 2, 3, 4].map((weekNumber) => ({ weekNumber }));
+
+  it("covers the later weeks that have no poll of their own", () => {
+    const covered = weeksGovernedByPoll(weeks, [2], 2).map((week) => week.weekNumber);
+    expect(covered).toEqual([1, 2, 3, 4]);
+  });
+
+  it("stops at the next poll", () => {
+    const covered = weeksGovernedByPoll(weeks, [2, 4], 2).map((week) => week.weekNumber);
+    expect(covered).toEqual([1, 2, 3]);
+  });
+
+  it("leaves earlier weeks to the poll that already covers them", () => {
+    const covered = weeksGovernedByPoll(weeks, [1, 3], 3).map((week) => week.weekNumber);
+    expect(covered).toEqual([3, 4]);
+  });
+
+  it("agrees with pollInForce on every week", () => {
+    const filed = [1, 3];
+    for (const week of weeks) {
+      const ruling = pollInForce(
+        filed.map((weekNumber) => ({ weekNumber })),
+        week.weekNumber,
+      );
+      const covered = weeksGovernedByPoll(weeks, filed, ruling!.weekNumber);
+      expect(covered.map((one) => one.weekNumber)).toContain(week.weekNumber);
+    }
   });
 });

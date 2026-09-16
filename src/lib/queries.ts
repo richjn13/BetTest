@@ -7,7 +7,12 @@ import { weekLabel } from "./format";
 import { buildStandings, type Adjustment, type ScoredPick, type Standing } from "./scoring";
 import { SPORTS, type Sport } from "./sports";
 import type { ProposedGame } from "./claude-odds-validate";
-import { pollInForce, rankFor, type PollEntry } from "./rankings";
+import {
+  pollInForce,
+  rankFor,
+  weeksGovernedByPoll,
+  type PollEntry,
+} from "./rankings";
 import {
   isGameOpen,
   type TotalSide,
@@ -619,12 +624,17 @@ export async function savePoll(
 }
 
 /**
- * Puts a poll onto the games of that week, for the ones already there.
+ * Puts a poll onto the games it governs.
  *
  * Rankings used to be written only while a pull was running, from a poll
  * stored beforehand, so the obvious order -- pull the games, then go and get
  * the poll -- left every game unranked with a re-pull as the only cure.
- * Saving a poll now fills in the slate it belongs to, whenever it is saved.
+ * Saving a poll now fills in the slates it belongs to, whenever it is saved.
+ *
+ * It fills in every week the poll governs, not only the one it is filed
+ * against. A poll stands until the next is published, so a Top 25 filed for
+ * week 2 is week 3's poll as well until a week 3 poll exists -- and writing
+ * only to week 2 was why a later week kept coming back unranked.
  *
  * Frozen games are left alone: their ranking is part of the week as it was
  * played.
@@ -633,27 +643,29 @@ export async function applyPollToGames(
   seasonYear: number,
   weekNumber: number,
   entries: PollEntry[],
-): Promise<{ ranked: number; games: number }> {
-  const week = unwrap<{ id: string } | null>(
-    await db()
-      .from("weeks")
-      .select("id")
-      .eq("sport", "ncaaf")
-      .eq("season_year", seasonYear)
-      .eq("week_number", weekNumber)
-      .maybeSingle(),
-  );
-  if (!week) return { ranked: 0, games: 0 };
+): Promise<{ ranked: number; games: number; weeks: number[] }> {
+  const weeks = await weeksGovernedBy(seasonYear, weekNumber);
+  if (weeks.length === 0) return { ranked: 0, games: 0, weeks: [] };
 
-  const games = await getGamesForWeek(week.id);
+  let ranked = 0;
+  const touched: number[] = [];
   const writes: { id: string; home: number | null; away: number | null }[] = [];
 
-  for (const game of games) {
-    if (game.spread_frozen_at) continue;
-    const home = rankFor(game.home_team, entries);
-    const away = rankFor(game.away_team, entries);
-    if (home === game.home_rank && away === game.away_rank) continue;
-    writes.push({ id: game.id, home, away });
+  for (const week of weeks) {
+    const games = await getGamesForWeek(week.id);
+    let here = 0;
+
+    for (const game of games) {
+      if (game.spread_frozen_at) continue;
+      const home = rankFor(game.home_team, entries);
+      const away = rankFor(game.away_team, entries);
+      if (home !== null || away !== null) here += 1;
+      if (home === game.home_rank && away === game.away_rank) continue;
+      writes.push({ id: game.id, home, away });
+    }
+
+    ranked += here;
+    if (here > 0) touched.push(week.weekNumber);
   }
 
   const results = await Promise.all(
@@ -671,11 +683,99 @@ export async function applyPollToGames(
     (result) => !result.error && (result.data?.length ?? 0) > 0,
   ).length;
 
+  return { ranked, games: changed, weeks: touched.sort((a, b) => a - b) };
+}
+
+/**
+ * The college weeks a poll rules over: its own, and every later week with no
+ * poll of its own yet.
+ */
+async function weeksGovernedBy(
+  seasonYear: number,
+  weekNumber: number,
+): Promise<{ id: string; weekNumber: number }[]> {
+  const weeks =
+    unwrap<{ id: string; week_number: number }[]>(
+      await db()
+        .from("weeks")
+        .select("id, week_number")
+        .eq("sport", "ncaaf")
+        .eq("season_year", seasonYear),
+    ) ?? [];
+
+  const filed = (await listStoredPolls())
+    .filter((poll) => poll.seasonYear === seasonYear && poll.ranked > 0)
+    .map((poll) => poll.weekNumber);
+
+  return weeksGovernedByPoll(
+    weeks.map((week) => ({ id: week.id, weekNumber: week.week_number })),
+    filed,
+    weekNumber,
+  );
+}
+
+/**
+ * What the rankings for a week actually look like, name by name.
+ *
+ * Rankings going missing is always one of three things -- no poll stored, a
+ * poll filed against the wrong week, or a school the feed spells differently --
+ * and they are indistinguishable from the outside. This reports all three at
+ * once so the admin page can say which it is instead of guessing.
+ */
+export async function inspectRankings(
+  seasonYear: number,
+  weekNumber: number,
+): Promise<{
+  poll: { weekNumber: number; source: string; ranked: number } | null;
+  games: number;
+  matched: number;
+  unmatchedTeams: string[];
+  unmatchedSchools: string[];
+}> {
+  const poll = await getPollInForce(seasonYear, weekNumber);
+  const week = unwrap<{ id: string } | null>(
+    await db()
+      .from("weeks")
+      .select("id")
+      .eq("sport", "ncaaf")
+      .eq("season_year", seasonYear)
+      .eq("week_number", weekNumber)
+      .maybeSingle(),
+  );
+
+  const games = week ? await getGamesForWeek(week.id) : [];
+  const entries = poll?.entries ?? [];
+
+  const names = new Set<string>();
+  for (const game of games) {
+    names.add(game.home_team);
+    names.add(game.away_team);
+  }
+
+  const unmatchedTeams: string[] = [];
+  const claimed = new Set<number>();
+  for (const name of names) {
+    const rank = rankFor(name, entries);
+    if (rank === null) unmatchedTeams.push(name);
+    else claimed.add(rank);
+  }
+
+  const matched = games.filter(
+    (game) =>
+      rankFor(game.home_team, entries) !== null ||
+      rankFor(game.away_team, entries) !== null,
+  ).length;
+
   return {
-    ranked: games.filter(
-      (game) => rankFor(game.home_team, entries) !== null || rankFor(game.away_team, entries) !== null,
-    ).length,
-    games: changed,
+    poll: poll
+      ? { weekNumber: poll.weekNumber, source: poll.source, ranked: entries.length }
+      : null,
+    games: games.length,
+    matched,
+    unmatchedTeams: unmatchedTeams.sort(),
+    unmatchedSchools: entries
+      .filter((entry) => !claimed.has(entry.rank))
+      .map((entry) => `${entry.rank} ${entry.team}`),
   };
 }
 

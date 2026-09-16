@@ -185,3 +185,29 @@ export function pollInForce<T extends { weekNumber: number }>(
   const after = [...polls].sort((a, b) => a.weekNumber - b.weekNumber);
   return after[0] ?? null;
 }
+
+/**
+ * The weeks a poll rules over, given every week in the season and the weeks a
+ * poll is filed against. The mirror image of `pollInForce`: a week belongs to
+ * the poll `pollInForce` would hand it, so what a pull reads and what a save
+ * writes can never disagree.
+ */
+export function weeksGovernedByPoll<T extends { weekNumber: number }>(
+  weeks: T[],
+  filedWeeks: number[],
+  weekNumber: number,
+): T[] {
+  const next = filedWeeks
+    .filter((week) => week > weekNumber)
+    .sort((a, b) => a - b)
+    .at(0);
+  const earlier = filedWeeks.some((week) => week < weekNumber);
+
+  return weeks.filter((week) => {
+    // Before the first poll of a season there is nothing else to use, which is
+    // the fallback `pollInForce` makes, so those weeks belong to it too.
+    if (week.weekNumber < weekNumber) return !earlier;
+    if (next !== undefined && week.weekNumber >= next) return false;
+    return true;
+  });
+}

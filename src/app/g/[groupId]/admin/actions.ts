@@ -29,6 +29,7 @@ import {
   applyTotals,
   getGamesForWeek,
   getPollInForce,
+  inspectRankings,
   savePoll,
   setGameInSlate,
   setGameTotal,
@@ -464,16 +465,23 @@ function quotaNote(quota: Quota | undefined): string {
 }
 
 /** What storing a poll did to the games already pulled for that week. */
-function rankNote(applied: { ranked: number; games: number }, weekNumber: number): string {
+function rankNote(
+  applied: { ranked: number; games: number; weeks: number[] },
+  weekNumber: number,
+): string {
+  const spread =
+    applied.weeks.length > 1
+      ? ` (weeks ${applied.weeks.join(", ")} -- a poll stands until the next one)`
+      : "";
   if (applied.games > 0) {
-    return ` ${applied.games} game${applied.games === 1 ? "" : "s"} in week ${weekNumber} now show a ranking.`;
+    return ` ${applied.games} game${applied.games === 1 ? "" : "s"} now show a ranking${spread}.`;
   }
   if (applied.ranked > 0) {
-    return ` Week ${weekNumber}'s games already showed these rankings.`;
+    return ` Those games already showed these rankings${spread}.`;
   }
   return (
-    ` No game in week ${weekNumber} has a ranked team in it, so nothing changed. ` +
-    "If you pulled a different week, save the poll against that one."
+    ` No game in week ${weekNumber} or later has a ranked team in it, so nothing ` +
+    "changed. Press Check rankings to see which names did not line up."
   );
 }
 
@@ -1031,4 +1039,52 @@ async function requireOpenWeek(weekId: string) {
     throw new AppError(`${week.label} has no games yet. Pull its games first.`);
   }
   return week;
+}
+
+/**
+ * Says, in one press, why a week's games do or do not show rankings.
+ *
+ * Three different faults look identical from the picks page -- nothing stored,
+ * a poll filed against another week, or a school the odds feed spells its own
+ * way -- so this reports the poll actually in force, how many games it reached,
+ * and the names on both sides that found no partner.
+ */
+export async function checkRankingsAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const seasonYear = optionalNumber(form, "seasonYear");
+  const weekNumber = optionalNumber(form, "weekNumber");
+
+  return run(groupId, async () => {
+    if (!seasonYear || weekNumber === null) throw new AppError("Pick a season and week.");
+
+    const found = await inspectRankings(seasonYear, weekNumber);
+
+    if (!found.poll) {
+      return `No poll is stored for ${seasonYear} at all, so week ${weekNumber} has nothing to show. Paste one in above.`;
+    }
+    if (found.games === 0) {
+      return `Week ${weekNumber} has no games pulled yet. The poll is there (${found.poll.ranked} teams, filed for week ${found.poll.weekNumber}); pull the slate and they will appear.`;
+    }
+
+    const parts = [
+      `Week ${weekNumber} is running on the week ${found.poll.weekNumber} poll ` +
+        `(${found.poll.ranked} teams, ${found.poll.source}).`,
+      `${found.matched} of ${found.games} games have a ranked team in them.`,
+    ];
+
+    if (found.unmatchedSchools.length > 0) {
+      parts.push(
+        `Ranked but not playing this week, or spelled differently by the feed: ` +
+          `${found.unmatchedSchools.join(", ")}.`,
+      );
+    }
+    if (found.matched === 0 && found.unmatchedTeams.length > 0) {
+      parts.push(`Teams in the slate: ${found.unmatchedTeams.slice(0, 12).join(", ")}.`);
+    }
+
+    return parts.join(" ");
+  });
 }

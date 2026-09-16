@@ -33,6 +33,7 @@ import {
   removeUserAction,
   setAdminAction,
   savePollAction,
+  checkRankingsAction,
   scrapeScoresAction,
   setWeekStateAction,
   syncScoresAction,
@@ -468,6 +469,7 @@ function RankingsSection({
 }) {
   const [saveState, save] = useFormState(savePollAction, IDLE);
   const [fetchState, fetchPoll] = useFormState(fetchPollAction, IDLE);
+  const [checkState, check] = useFormState(checkRankingsAction, IDLE);
 
   // Rankings belong to one week, and which week is a judgement only the person
   // holding the poll can make: a poll published on Sunday is next Saturday's.
@@ -489,6 +491,7 @@ function RankingsSection({
       <h3 className="text-sm font-semibold">Rankings</h3>
       <Feedback state={saveState} />
       <Feedback state={fetchState} />
+      <Feedback state={checkState} />
       <p className="text-sm text-muted">
         The odds feed carries no poll, so rankings are stored here, one week at
         a time. Saving them fills in that week&apos;s games straight away, so it
@@ -527,6 +530,19 @@ function RankingsSection({
           ? `Week ${weekNumber} has ${stored.ranked} ranked teams stored (${stored.source}).`
           : `Nothing stored for week ${weekNumber} yet.`}
       </p>
+
+      <form action={check}>
+        <input type="hidden" name="groupId" value={groupId} />
+        <input type="hidden" name="seasonYear" value={seasonYear} />
+        <input type="hidden" name="weekNumber" value={weekNumber} />
+        <SubmitButton className="btn py-1 text-sm" pendingLabel="Checking...">
+          Check week {weekNumber} rankings
+        </SubmitButton>
+        <p className="mt-1 text-xs text-muted">
+          Says which poll that week is running on, how many of its games it
+          reached, and any school the feed spells its own way.
+        </p>
+      </form>
 
       <form action={save} className="space-y-2">
         <input type="hidden" name="groupId" value={groupId} />
