@@ -16,6 +16,7 @@ import {
   deleteGameAction,
   overrideGameAction,
   setGameInSlateAction,
+  setRanksAction,
   setTotalAction,
   toggleTotalAction,
 } from "./actions";
@@ -123,6 +124,11 @@ function SlateCount({ sport, games }: { sport: Sport; games: Game[] }) {
   const inSlate = games.filter((game) => game.excluded_at === null).length;
   const goal = sportConfig(sport).slateGoal;
   const met = goal !== null && inSlate >= goal;
+  // Whether the poll reached this week is the question the rankings keep
+  // raising, so the answer sits on the week itself rather than a button away.
+  const ranked = sportConfig(sport).ranked
+    ? games.filter((game) => game.home_rank !== null || game.away_rank !== null).length
+    : 0;
 
   return (
     <span className="text-sm">
@@ -132,6 +138,8 @@ function SlateCount({ sport, games }: { sport: Sport; games: Game[] }) {
           ? ` game${inSlate === 1 ? "" : "s"} in the slate`
           : ` of ${goal} in the slate`}
         {games.length > inSlate && ` · ${games.length - inSlate} set aside`}
+        {sportConfig(sport).ranked &&
+          (ranked > 0 ? ` · ${ranked} with a ranked team` : " · none ranked")}
       </span>
     </span>
   );
@@ -152,6 +160,7 @@ function GamesSection({
   const [overrideState, override] = useFormState(overrideGameAction, IDLE);
   const [deleteState, remove] = useFormState(deleteGameAction, IDLE);
   const [totalState, setTotal] = useFormState(setTotalAction, IDLE);
+  const [rankState, setRanks] = useFormState(setRanksAction, IDLE);
   const [toggleState, toggleTotal] = useFormState(toggleTotalAction, IDLE);
   const [slateState, setInSlate] = useFormState(setGameInSlateAction, IDLE);
 
@@ -250,6 +259,7 @@ function GamesSection({
         <Feedback state={overrideState} />
         <Feedback state={deleteState} />
         <Feedback state={totalState} />
+        <Feedback state={rankState} />
         <Feedback state={toggleState} />
         <Feedback state={slateState} />
         {games.length === 0 ? (
@@ -405,6 +415,50 @@ function GamesSection({
                 </div>
 
 
+                {week?.sport === "ncaaf" && (
+                  <form action={setRanks} className="mt-3 flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="groupId" value={groupId} />
+                    <input type="hidden" name="gameId" value={game.id} />
+                    <div>
+                      <label className="label text-xs">
+                        {abbreviate(game.away_team)} rank
+                      </label>
+                      <input
+                        name="awayRank"
+                        type="number"
+                        min={1}
+                        max={25}
+                        defaultValue={game.away_rank ?? ""}
+                        placeholder="—"
+                        className="field w-20 py-1 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="label text-xs">
+                        {abbreviate(game.home_team)} rank
+                      </label>
+                      <input
+                        name="homeRank"
+                        type="number"
+                        min={1}
+                        max={25}
+                        defaultValue={game.home_rank ?? ""}
+                        placeholder="—"
+                        className="field w-20 py-1 text-sm"
+                      />
+                    </div>
+                    <SubmitButton className="btn py-1 text-sm" pendingLabel="Saving...">
+                      Set rankings
+                    </SubmitButton>
+                    <p className="w-full text-xs text-muted">
+                      Filled in from the stored poll, which matches schools by
+                      name. Correct one here when the feed spells a school its
+                      own way; blank means unranked. A fresh pull or poll save
+                      writes over this.
+                    </p>
+                  </form>
+                )}
+
                 {/*
                   Deleting takes every pick on the game with it, and setting a
                   game aside does what deleting was being used for. So it is
@@ -492,7 +546,9 @@ function GameDrawer({
           className="min-w-0 flex-1 text-left"
         >
           <span className="block truncate text-sm font-medium">
-            {abbreviate(game.away_team)} at {abbreviate(game.home_team)}
+            <Ranked rank={game.away_rank} />
+            {abbreviate(game.away_team)} at <Ranked rank={game.home_rank} />
+            {abbreviate(game.home_team)}
           </span>
           <span className="block truncate text-xs text-muted">
             {formatKickoff(game.kickoff_time)} ·{" "}
@@ -523,6 +579,17 @@ function GameDrawer({
       {open && <div className="border-t border-edge p-3">{children}</div>}
     </li>
   );
+}
+
+/**
+ * A team's poll position, or nothing at all when it is unranked.
+ *
+ * Kept tiny and in front of the name, the way a scoreboard writes it, so a
+ * college row still reads as a matchup rather than a table of numbers.
+ */
+function Ranked({ rank }: { rank: number | null }) {
+  if (rank === null) return null;
+  return <span className="mr-0.5 text-xs text-accent">#{rank}</span>;
 }
 
 /**

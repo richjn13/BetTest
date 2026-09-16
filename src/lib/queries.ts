@@ -1048,6 +1048,41 @@ export async function setGameTotal(
 }
 
 /**
+ * Sets one game's two rankings by hand.
+ *
+ * The poll matches schools by name, and the odds feed spells some of them its
+ * own way -- "Miami (FL)", "UL Monroe", a school that renamed itself. Rather
+ * than keep a list of exceptions that goes stale every season, the one game it
+ * got wrong can be corrected here in two boxes.
+ *
+ * A pull and a poll save both overwrite this, since both know the whole slate
+ * and this knows one game. Correct the game after the pull, not before.
+ */
+export async function setGameRanks(
+  gameId: string,
+  home: number | null,
+  away: number | null,
+): Promise<void> {
+  for (const rank of [home, away]) {
+    if (rank === null) continue;
+    if (!Number.isInteger(rank) || rank < 1 || rank > 25) {
+      throw new AppError("A ranking is a whole number from 1 to 25, or blank.");
+    }
+  }
+
+  const game = await getGame(gameId);
+  if (!game) throw new AppError("That game no longer exists.");
+
+  unwrap(
+    await db()
+      .from("games")
+      .update({ home_rank: home, away_rank: away })
+      .eq("id", game.id)
+      .select("id"),
+  );
+}
+
+/**
  * Flags a game as one that should carry an over/under, without a number.
  *
  * This is what the toggle does. The number arrives later, from a totals pull,

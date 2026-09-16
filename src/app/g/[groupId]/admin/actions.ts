@@ -32,6 +32,7 @@ import {
   inspectRankings,
   savePoll,
   setGameInSlate,
+  setGameRanks,
   setGameTotal,
   setTotalsEnabled,
   setWeekState,
@@ -837,6 +838,50 @@ export async function setGameInSlateAction(
 }
 
 /** Sets an over/under by hand, for a game the feed has no number for. */
+/**
+ * Corrects one game's two rankings.
+ *
+ * The poll is matched by name, so the games it misses are the ones the odds
+ * feed spells its own way. Two boxes on the game itself fix that faster than
+ * any list of exceptions, and keep working when a school renames itself.
+ */
+export async function setRanksAction(
+  _previous: AdminState,
+  form: FormData,
+): Promise<AdminState> {
+  const groupId = text(form, "groupId");
+  const gameId = text(form, "gameId");
+  const homeRank = optionalNumber(form, "homeRank");
+  const awayRank = optionalNumber(form, "awayRank");
+
+  return run(groupId, async (actor) => {
+    const game = await getGame(gameId);
+    if (!game) throw new AppError("That game no longer exists.");
+
+    await setGameRanks(gameId, homeRank, awayRank);
+    await logAdminAction({
+      groupId,
+      actorUserId: actor.id,
+      actorUsername: actor.username,
+      action: "override_game",
+      gameId,
+      note: "Rankings set by hand.",
+      details: {
+        matchup: `${game.away_team} at ${game.home_team}`,
+        homeRank,
+        awayRank,
+      },
+    });
+
+    const said = [
+      awayRank === null ? null : `${game.away_team} at ${awayRank}`,
+      homeRank === null ? null : `${game.home_team} at ${homeRank}`,
+    ].filter(Boolean);
+
+    return said.length > 0 ? `Ranked ${said.join(", ")}.` : "Rankings cleared on that game.";
+  });
+}
+
 export async function setTotalAction(
   _previous: AdminState,
   form: FormData,
