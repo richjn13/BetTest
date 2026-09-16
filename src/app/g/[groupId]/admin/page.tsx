@@ -9,7 +9,7 @@ import {
   getWeek,
   listWeeks,
 } from "@/lib/queries";
-import { getStoredPoll, readValue } from "@/lib/queries";
+import { listStoredPolls, readValue } from "@/lib/queries";
 import { QUOTA_KEY, type RememberedQuota } from "@/lib/odds";
 import { AdminPanel } from "./AdminPanel";
 
@@ -57,20 +57,20 @@ export default async function AdminPage({
     ? ((await getWeek(searchParams.week)) ?? (await getCurrentWeek()) ?? mostRecentOpened)
     : ((await getCurrentWeek()) ?? mostRecentOpened);
 
-  const games = week ? await getGamesForWeek(week.id) : [];
+  // The week's games and its picks, for the slate summary and the pick fixer.
+  const [games, picks] = await Promise.all([
+    week ? getGamesForWeek(week.id) : Promise.resolve([]),
+    week
+      ? getPicksForWeek(
+          week.id,
+          members.map((member) => member.id),
+        )
+      : Promise.resolve([]),
+  ]);
 
-  // Whether a college week already has its rankings decides what the pull box
-  // says, and reading it is one cheap query.
-  const collegeWeek = weeks.filter((candidate) => candidate.sport === "ncaaf").at(-1) ?? null;
-  const poll = collegeWeek
-    ? await getStoredPoll(collegeWeek.season_year, collegeWeek.week_number).catch(() => null)
-    : null;
-  const picks = week
-    ? await getPicksForWeek(
-        week.id,
-        members.map((member) => member.id),
-      )
-    : [];
+  // Which weeks already have a poll, so the rankings box can say so for
+  // whichever week is chosen there.
+  const polls = await listStoredPolls().catch(() => []);
 
   return (
     <AdminPanel
@@ -84,16 +84,7 @@ export default async function AdminPage({
       actions={actions}
       adjustments={adjustments}
       quota={quota}
-      poll={
-        poll && collegeWeek
-          ? {
-              seasonYear: collegeWeek.season_year,
-              weekNumber: collegeWeek.week_number,
-              ranked: poll.entries.length,
-              source: poll.source,
-            }
-          : null
-      }
+      polls={polls}
     />
   );
 }

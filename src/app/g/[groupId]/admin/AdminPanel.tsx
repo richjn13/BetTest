@@ -51,17 +51,17 @@ type Props = {
   adjustments: PointAdjustment[];
   /** The balance written down by the last call the app made. */
   quota: { remaining: number | null; used: number | null; at?: string } | null;
-  /** The stored AP Top 25 for the latest college week, if there is one. */
-  poll: {
+  /** Every stored AP Top 25, so the rankings box can speak for any week. */
+  polls: {
     seasonYear: number;
     weekNumber: number;
     ranked: number;
     source: string;
-  } | null;
+  }[];
 };
 
 export function AdminPanel(props: Props) {
-  const { viewerId, group, members, weeks, week, games, picks, actions, adjustments, quota, poll } =
+  const { viewerId, group, members, weeks, week, games, picks, actions, adjustments, quota, polls } =
     props;
 
   const openWeeks = weeks.filter((entry) => entry.opened_at && !entry.closed_at);
@@ -93,7 +93,7 @@ export function AdminPanel(props: Props) {
           <>
             <GamesPullSection groupId={group.id} sport={sport} weeks={weeks} quota={quota} />
             {sport === "ncaaf" && (
-              <RankingsSection groupId={group.id} weeks={weeks} poll={poll} />
+              <RankingsSection groupId={group.id} weeks={weeks} polls={polls} />
             )}
             <TotalsPullSection
               groupId={group.id}
@@ -460,20 +460,29 @@ function GamesPullSection({
 function RankingsSection({
   groupId,
   weeks,
-  poll,
+  polls,
 }: {
   groupId: string;
   weeks: Week[];
-  poll: Props["poll"];
+  polls: Props["polls"];
 }) {
   const [saveState, save] = useFormState(savePollAction, IDLE);
   const [fetchState, fetchPoll] = useFormState(fetchPollAction, IDLE);
-  const latest = weeks.filter((week) => week.sport === "ncaaf").at(-1) ?? null;
 
-  const seasonYear = latest?.season_year ?? new Date().getUTCFullYear();
-  const weekNumber = latest?.week_number ?? 1;
+  // Rankings belong to one week, and which week is a judgement only the person
+  // holding the poll can make: a poll published on Sunday is next Saturday's.
+  // Pinning this to the newest week pulled put polls on the wrong one.
+  const college = weeks.filter((week) => week.sport === "ncaaf");
+  const latest = college.at(-1) ?? null;
+  const [weekId, setWeekId] = useState(() => latest?.id ?? "");
+
+  const chosen = college.find((week) => week.id === weekId) ?? latest;
+  const seasonYear = chosen?.season_year ?? new Date().getUTCFullYear();
+  const weekNumber = chosen?.week_number ?? 1;
   const stored =
-    poll && poll.seasonYear === seasonYear && poll.weekNumber === weekNumber ? poll : null;
+    polls.find(
+      (entry) => entry.seasonYear === seasonYear && entry.weekNumber === weekNumber,
+    ) ?? null;
 
   return (
     <div className="mt-6 space-y-3 border-t border-edge pt-4">
@@ -481,19 +490,42 @@ function RankingsSection({
       <Feedback state={saveState} />
       <Feedback state={fetchState} />
       <p className="text-sm text-muted">
-        The odds feed carries no poll, so rankings are stored here, once a week.
-        Saving them fills in the games of that week straight away, so it does
-        not matter whether you do this before or after pulling the slate.
+        The odds feed carries no poll, so rankings are stored here, one week at
+        a time. Saving them fills in that week&apos;s games straight away, so it
+        does not matter whether you do this before or after pulling the slate.
       </p>
+
+      {college.length === 0 ? (
+        <p className="text-sm text-muted">Pull an NCAA week first.</p>
+      ) : (
+        <div>
+          <label className="label">Which week are these rankings for</label>
+          <select
+            value={chosen?.id ?? ""}
+            onChange={(event) => setWeekId(event.target.value)}
+            className="field"
+          >
+            {[...college].reverse().map((week) => {
+              const has = polls.find(
+                (entry) =>
+                  entry.seasonYear === week.season_year &&
+                  entry.weekNumber === week.week_number,
+              );
+              return (
+                <option key={week.id} value={week.id}>
+                  {weekChoiceLabel(week)}
+                  {has ? ` · ${has.ranked} stored` : " · none stored"}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      )}
+
       <p className="text-sm">
         {stored
           ? `Week ${weekNumber} has ${stored.ranked} ranked teams stored (${stored.source}).`
           : `Nothing stored for week ${weekNumber} yet.`}
-      </p>
-      <p className="text-xs text-muted">
-        This saves against <strong>week {weekNumber}</strong>, the newest NCAA
-        week you have pulled. Rankings belong to one week, so pull a week first
-        and then save that week&apos;s poll.
       </p>
 
       <form action={save} className="space-y-2">
@@ -525,7 +557,8 @@ function RankingsSection({
         </SubmitButton>
         <p className="mt-1 text-xs text-muted">
           One request to the AP rankings page, parsed here. No model, no tokens.
-          Set AP_POLL_URL to read a different page.
+          It reads whatever that page shows today and stores it against the week
+          chosen above. Set AP_POLL_URL to read a different page.
         </p>
       </form>
     </div>

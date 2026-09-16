@@ -568,6 +568,26 @@ export async function getStoredPoll(
   return { entries: row.entries, source: row.source, updatedAt: row.updated_at };
 }
 
+/**
+ * Every stored poll, so the admin page can say which weeks have one. The table
+ * holds a row per week of a season, so reading it whole costs nothing.
+ */
+export async function listStoredPolls(): Promise<
+  { seasonYear: number; weekNumber: number; ranked: number; source: string }[]
+> {
+  const rows =
+    unwrap<{ season_year: number; week_number: number; entries: PollEntry[]; source: string }[]>(
+      await db().from("ap_poll").select("season_year, week_number, entries, source"),
+    ) ?? [];
+
+  return rows.map((row) => ({
+    seasonYear: row.season_year,
+    weekNumber: row.week_number,
+    ranked: Array.isArray(row.entries) ? row.entries.length : 0,
+    source: row.source,
+  }));
+}
+
 export async function savePoll(
   seasonYear: number,
   weekNumber: number,
