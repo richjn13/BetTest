@@ -158,3 +158,30 @@ export function pollFromHtml(html: string): PollEntry[] {
   }
   return entries;
 }
+
+/**
+ * Which stored poll applies to a given week.
+ *
+ * A poll is published once and stands until the next one, so a week with no
+ * poll of its own is governed by the most recent one before it. Without this,
+ * rankings had to be filed against exactly the week being pulled or they
+ * simply did not appear -- and the two forms that set those numbers defaulted
+ * one week apart, so the usual outcome was no rankings at all.
+ */
+export function pollInForce<T extends { weekNumber: number }>(
+  polls: T[],
+  weekNumber: number,
+): T | null {
+  const exact = polls.find((poll) => poll.weekNumber === weekNumber);
+  if (exact) return exact;
+
+  const before = polls
+    .filter((poll) => poll.weekNumber < weekNumber)
+    .sort((a, b) => b.weekNumber - a.weekNumber);
+  if (before.length > 0) return before[0];
+
+  // Nothing before it: a poll filed against a later week is still a better
+  // answer than none, and says so when the pull reports which it used.
+  const after = [...polls].sort((a, b) => a.weekNumber - b.weekNumber);
+  return after[0] ?? null;
+}

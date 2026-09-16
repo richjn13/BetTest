@@ -7,7 +7,7 @@ import { weekLabel } from "./format";
 import { buildStandings, type Adjustment, type ScoredPick, type Standing } from "./scoring";
 import { SPORTS, type Sport } from "./sports";
 import type { ProposedGame } from "./claude-odds-validate";
-import { rankFor, type PollEntry } from "./rankings";
+import { pollInForce, rankFor, type PollEntry } from "./rankings";
 import {
   isGameOpen,
   type TotalSide,
@@ -545,27 +545,33 @@ export async function slotLastRun(key: string): Promise<Date | null> {
 // ------------------------------------------------------------------- poll
 
 /**
- * The stored AP Top 25 for a week, or an empty list.
+ * The poll that governs a week: its own, or the most recent one before it.
  *
- * Rankings are the one thing the odds feed does not carry. Fetching them was
- * costing a model call on every college pull, which is what made an NCAA pull
- * slow and expensive next to an instant, free NFL one. Written once a week and
- * read for nothing thereafter.
+ * A poll stands until the next is published, so a week without one of its own
+ * is not unranked -- it is running on the last poll. Returns the week the poll
+ * was filed against too, so a pull can say which it used.
  */
-export async function getStoredPoll(
+export async function getPollInForce(
   seasonYear: number,
   weekNumber: number,
-): Promise<{ entries: PollEntry[]; source: string; updatedAt: string } | null> {
-  const row = unwrap<{ entries: PollEntry[]; source: string; updated_at: string } | null>(
-    await db()
-      .from("ap_poll")
-      .select("entries, source, updated_at")
-      .eq("season_year", seasonYear)
-      .eq("week_number", weekNumber)
-      .maybeSingle(),
-  );
-  if (!row || !Array.isArray(row.entries) || row.entries.length === 0) return null;
-  return { entries: row.entries, source: row.source, updatedAt: row.updated_at };
+): Promise<{ entries: PollEntry[]; weekNumber: number; source: string } | null> {
+  const rows =
+    unwrap<{ week_number: number; entries: PollEntry[]; source: string }[]>(
+      await db()
+        .from("ap_poll")
+        .select("week_number, entries, source")
+        .eq("season_year", seasonYear),
+    ) ?? [];
+
+  const usable = rows
+    .filter((row) => Array.isArray(row.entries) && row.entries.length > 0)
+    .map((row) => ({
+      entries: row.entries,
+      weekNumber: row.week_number,
+      source: row.source,
+    }));
+
+  return pollInForce(usable, weekNumber);
 }
 
 /**

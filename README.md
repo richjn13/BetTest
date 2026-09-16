@@ -523,7 +523,13 @@ games straight away, so the order does not matter: pull the slate and then save
 the poll, or the other way round. You choose which week the poll belongs to,
 since a poll published on a Sunday is the following Saturday's, and the list
 shows how many teams are already stored against each week. The result says how
-many games picked up a ranking. **Read them from ncaa.com** fetches
+many games picked up a ranking.
+
+**A week without a poll of its own uses the last one published.** That is how a
+poll works, and it is what stops a ranking disappearing because it was filed
+against a neighbouring week. A pull says which week's poll it used, and says so
+too when the poll it found matched no team in the slate, which means the school
+names in it do not agree with the feed's. **Read them from ncaa.com** fetches
 the AP rankings page and parses it here. **Paste the Top 25** takes a poll
 copied from anywhere: each line needs a number and a school, and records, vote
 totals and brackets are ignored.

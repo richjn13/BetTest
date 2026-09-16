@@ -28,7 +28,7 @@ import {
   applyScrapedScores,
   applyTotals,
   getGamesForWeek,
-  getStoredPoll,
+  getPollInForce,
   savePoll,
   setGameInSlate,
   setGameTotal,
@@ -527,7 +527,10 @@ export async function pullGamesAction(
     // A feed pull spends no Claude tokens at all. The rankings it shows come
     // from the poll stored for that week, which is written once -- pasted in
     // or fetched -- and read for nothing by every pull afterwards.
-    const stored = config.ranked ? await getStoredPoll(seasonYear, weekNumber) : null;
+    // The poll in force for this week, which is its own or the last one
+    // published before it. Requiring an exact match meant rankings vanished
+    // whenever the poll had been filed against a neighbouring week.
+    const stored = config.ranked ? await getPollInForce(seasonYear, weekNumber) : null;
 
     const pulled = useClaude
       ? await pullLinesWithClaude(seasonYear, weekNumber, sport).then((result) => {
@@ -570,10 +573,19 @@ export async function pullGamesAction(
       },
     });
 
-    const ranksNote =
-      config.ranked && !stored
-        ? " No AP Top 25 is stored for this week, so no rankings are shown. Add one under Rankings."
-        : "";
+    const ranked = pulled.games.filter(
+      (game) => game.homeRank !== null || game.awayRank !== null,
+    ).length;
+
+    const ranksNote = !config.ranked
+      ? ""
+      : !stored
+        ? " No AP Top 25 is stored for this season, so no rankings are shown. Add one under Rankings."
+        : ranked === 0
+          ? ` The week ${stored.weekNumber} poll is stored but matched no team in this slate.` +
+            " Check the school names in it."
+          : ` ${ranked} game${ranked === 1 ? "" : "s"} carry a ranking, from the week ` +
+            `${stored.weekNumber} poll.`;
 
     const parts = [
       `${counts.inserted} added, ${counts.updated} updated`,

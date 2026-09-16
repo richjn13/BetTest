@@ -3,6 +3,7 @@ import {
   normalizeSchool,
   parsePastedPoll,
   pollFromHtml,
+  pollInForce,
   rankFor,
   readPoll,
 } from "../rankings";
@@ -132,5 +133,27 @@ describe("pollFromHtml", () => {
 
   it("returns nothing for a page with no rankings in it", () => {
     expect(pollFromHtml("<html><body><p>Nothing here</p></body></html>")).toEqual([]);
+  });
+});
+
+describe("pollInForce", () => {
+  const polls = [{ weekNumber: 1 }, { weekNumber: 3 }, { weekNumber: 5 }];
+
+  it("prefers the week's own poll", () => {
+    expect(pollInForce(polls, 3)).toEqual({ weekNumber: 3 });
+  });
+
+  it("falls back to the most recent one before it", () => {
+    // Week 4 has no poll of its own; week 3's still stands.
+    expect(pollInForce(polls, 4)).toEqual({ weekNumber: 3 });
+    expect(pollInForce(polls, 99)).toEqual({ weekNumber: 5 });
+  });
+
+  it("uses the earliest later poll when there is nothing before", () => {
+    expect(pollInForce(polls, 0)).toEqual({ weekNumber: 1 });
+  });
+
+  it("returns nothing when no poll is stored at all", () => {
+    expect(pollInForce([], 3)).toBe(null);
   });
 });
