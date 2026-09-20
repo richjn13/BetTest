@@ -183,6 +183,9 @@ export async function runRefresh(
     result.scoresUpdated += scores.scoresUpdated;
     result.eventsReturned = scores.eventsReturned ?? null;
     result.unmatched = scores.unmatched ?? [];
+    // Not an error -- the run still worked -- but the reason a finished game
+    // can never arrive, which belongs in the run's own report.
+    if (scores.historyRefused) result.degraded.push(scores.historyRefused);
     if (scores.error) {
       result.scoresError = scores.error;
       result.degraded.push(scores.error);

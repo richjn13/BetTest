@@ -40,6 +40,8 @@ export type SyncResult = {
   eventsReturned?: number;
   /** Our games past kickoff that the feed never mentioned. */
   unmatched?: string[];
+  /** Set when the plan refused the historical window finished games need. */
+  historyRefused?: string;
   gamesSeen: number;
   gamesInserted: number;
   spreadsUpdated: number;
@@ -482,6 +484,15 @@ export async function refreshScores(
       events = await getJson<ScoreEvent[]>(scoresEndpoint(sportConfig(sport).oddsApiKey), {
         dateFormat: "iso",
       });
+      // Said out loud, because it decides what the run can possibly do. The
+      // plain call carries live and upcoming games only, so once a game has
+      // finished and dropped out, no number of runs will ever bring its score
+      // back -- and swallowing this refusal is what made that look like the
+      // feed simply having nothing to say.
+      result.historyRefused =
+        `The feed would not serve the ${daysFrom}-day history this plan needs for ` +
+        `finished games (${describe(first)}). Only live and upcoming games came back, ` +
+        "so anything already over has to come from a scores page or by hand.";
     } catch {
       return { ...result, ok: false, error: describe(first) };
     }
