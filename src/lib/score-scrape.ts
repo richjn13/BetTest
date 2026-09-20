@@ -166,3 +166,97 @@ export function scoresFromPage(
 
   return { found, missed };
 }
+
+/**
+ * Reading scores out of a scoreboard API's JSON, which is the reliable way.
+ *
+ * A modern scoreboard page draws itself in the browser: its HTML carries the
+ * furniture and none of the scores, so the reader above finds nothing on it
+ * however well it is written. The same sites serve the scoreboard as JSON to
+ * their own front end, and that response holds both teams and both numbers in
+ * named fields -- no markup to guess at, nothing to change under us.
+ *
+ * Shaped for the widely used `events[].competitions[].competitors[]` layout,
+ * and written defensively: every field is checked, and a game is skipped
+ * rather than guessed at.
+ */
+export function scoresFromJson(payload: unknown, games: KnownGame[]): ScrapeResult {
+  const events = (payload as { events?: unknown })?.events;
+  const found: ScrapedScore[] = [];
+  const missed: string[] = [];
+  if (!Array.isArray(events)) {
+    return { found, missed: games.map((game) => `${game.awayTeam} at ${game.homeTeam}`) };
+  }
+
+  // Every side the feed reported, under each of the names it gave it, so a
+  // game can be found whether we hold "Ohio State Buckeyes" or "Ohio State".
+  type Side = { score: number; final: boolean };
+  const sides = new Map<string, Side>();
+
+  for (const raw of events) {
+    const event = raw as { competitions?: unknown };
+    const competition = Array.isArray(event.competitions) ? event.competitions[0] : null;
+    const record = competition as
+      | { competitors?: unknown; status?: { type?: { completed?: unknown } } }
+      | null;
+    if (!record || !Array.isArray(record.competitors)) continue;
+
+    const final = record.status?.type?.completed === true;
+
+    for (const entry of record.competitors) {
+      const side = entry as {
+        score?: unknown;
+        team?: { displayName?: unknown; shortDisplayName?: unknown; location?: unknown; name?: unknown };
+      };
+      const score = Number(side.score);
+      if (!Number.isFinite(score)) continue;
+
+      const team = side.team ?? {};
+      const names = [
+        team.displayName,
+        team.shortDisplayName,
+        team.location,
+        typeof team.location === "string" && typeof team.name === "string"
+          ? `${team.location} ${team.name}`
+          : null,
+      ].filter((name): name is string => typeof name === "string" && name.trim().length > 0);
+
+      for (const name of names) sides.set(normalize(name).trim(), { score, final });
+    }
+  }
+
+  for (const game of games) {
+    const home = lookUp(sides, game.homeTeam);
+    const away = lookUp(sides, game.awayTeam);
+    if (!home || !away) {
+      missed.push(`${game.awayTeam} at ${game.homeTeam}`);
+      continue;
+    }
+    found.push({
+      gameId: game.id,
+      home: home.score,
+      away: away.score,
+      // A game is only over when both sides say so.
+      final: home.final && away.final,
+    });
+  }
+
+  return { found, missed };
+}
+
+/**
+ * One of our team names against the names a feed used. Exact first, then the
+ * school without its mascot, which is where the two spellings usually differ.
+ */
+function lookUp<T>(sides: Map<string, T>, team: string): T | undefined {
+  const full = normalize(team).trim();
+  const direct = sides.get(full);
+  if (direct) return direct;
+
+  const words = full.split(" ");
+  for (let keep = words.length - 1; keep >= 2; keep -= 1) {
+    const shorter = sides.get(words.slice(0, keep).join(" "));
+    if (shorter) return shorter;
+  }
+  return undefined;
+}

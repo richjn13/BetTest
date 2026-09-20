@@ -637,15 +637,24 @@ windows, which covers the times nobody has the app open. Treat it as a backstop
 rather than the mechanism: GitHub's scheduler is best-effort and drops runs
 under load -- three were due in one hour here and one arrived.
 
-**Scores can come from a free page instead.** Set any of these in Vercel and
-scores are read from a public scoreboard for nothing, with the feed left as a
-fallback for whatever the page did not say:
+**Scores come from a free scoreboard first, and the odds feed only for what it
+did not say.** With nothing configured this reads ESPN's public scoreboard,
+which answers with JSON -- both teams and both numbers in named fields. No key,
+no monthly allowance, and nothing that depends on how a page is built today.
+
+Point it somewhere else with any of these, if you would rather:
 
 | Variable | What it covers |
 | --- | --- |
-| `NCAAF_SCORES_URL` | A page listing college scores |
-| `NFL_SCORES_URL` | A page listing NFL scores |
-| `SCORES_URL` | One page covering both, used when the specific one is unset |
+| `NCAAF_SCORES_URL` | A scoreboard for college |
+| `NFL_SCORES_URL` | A scoreboard for the NFL |
+| `SCORES_URL` | One covering both, used when the specific one is unset |
+
+A URL answering JSON is read as JSON; anything else is read as a page. **Do not
+point these at a scoreboard web page such as ncaa.com or nfl.com.** Those draw
+themselves in the browser: their HTML carries the furniture and none of the
+scores, so nothing can be read off them. If a configured URL yields nothing,
+the default scoreboard is tried anyway rather than leaving a week unscored.
 
 The reading does not depend on the page's markup, which is nobody's contract.
 It reduces the page to text and searches it for the games it already has, and a

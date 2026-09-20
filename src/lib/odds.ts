@@ -490,9 +490,9 @@ export async function refreshScores(
       // back -- and swallowing this refusal is what made that look like the
       // feed simply having nothing to say.
       result.historyRefused =
-        `The feed would not serve the ${daysFrom}-day history this plan needs for ` +
-        `finished games (${describe(first)}). Only live and upcoming games came back, ` +
-        "so anything already over has to come from a scores page or by hand.";
+        `The feed would not serve the ${daysFrom}-day history finished games need ` +
+        `(${describe(first)}). Only live and upcoming games came back, so anything ` +
+        "already over has to come from a scores page or by hand.";
     } catch {
       return { ...result, ok: false, error: describe(first) };
     }

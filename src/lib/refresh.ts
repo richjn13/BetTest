@@ -200,7 +200,11 @@ export async function runRefresh(
     // enough to need it. The plain request covers live and just-finished, and
     // is the one a free plan allows.
     const scores = await refreshScores(
-      pending.daysBack >= 1 ? pending.daysBack + 1 : null,
+      // The feed accepts 1 to 3 days of history and answers 422 to anything
+      // else. A game stuck unresolved since last week pushed this to 4 and got
+      // the whole request refused, which is how a Saturday that was only one
+      // day old went unfetched: the number was out of range, not the plan.
+      pending.daysBack >= 1 ? Math.min(3, pending.daysBack + 1) : null,
       sport,
       weekId ? [weekId] : null,
     );
