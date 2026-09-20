@@ -79,6 +79,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       // What the feed actually said, so a run that writes nothing can be read.
       // Without these a quiet afternoon and a broken match look identical.
       eventsReturned: result.eventsReturned,
+      fromPage: result.fromPage ?? 0,
+      page: { ...result.page, missed: result.page.missed.slice(0, 6) },
       unmatched: result.unmatched.slice(0, 8),
       unmatchedCount: result.unmatched.length,
       graded: result.graded,

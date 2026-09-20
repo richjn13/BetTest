@@ -18,6 +18,15 @@ export type RefreshResult = {
   skipped: boolean;
   /** Scores read off a configured scoreboard page, which cost nothing. */
   fromPage?: number;
+  /** What the scoreboard page did, whether or not it wrote anything. */
+  page: {
+    /** The host of the configured page, or null when none is set. */
+    host: string | null;
+    /** Games the page yielded a score for, written or not. */
+    found: number;
+    /** Games it said nothing usable about, a few of them named. */
+    missed: string[];
+  };
   /** The open week the run was fetching for, if any. */
   waitingOn: string | null;
   /** A database failure, which is a real outage rather than a soft degrade. */
@@ -80,6 +89,7 @@ export async function runRefresh(
     scoresUpdated: 0,
     eventsReturned: null,
     unmatched: [],
+    page: { host: null, found: 0, missed: [] },
     graded: null,
   };
 
@@ -135,7 +145,18 @@ export async function runRefresh(
 
   // A configured scoreboard page is free and has no monthly allowance, so it
   // is tried first and the feed only picks up what it could not read.
-  if (pending.count > 0 && scoresUrl(sport)) {
+  const configured = scoresUrl(sport);
+  if (configured) {
+    // The host alone, never the whole URL: it can carry a key in a query
+    // string, and this ends up in a log anybody with the repo can read.
+    try {
+      result.page.host = new URL(configured).host;
+    } catch {
+      result.page.host = "unreadable URL";
+    }
+  }
+
+  if (pending.count > 0 && configured) {
     try {
       const live = (await listOpenedWeeks(sport)).filter((entry) => entry.closed_at === null);
       const targets = weekId ? live.filter((entry) => entry.id === weekId) : live;
@@ -155,6 +176,11 @@ export async function runRefresh(
           result.degraded.push(page.error);
           continue;
         }
+        // A page that loads and yields nothing is the quietest failure here:
+        // no error, no scores, and a run that looks like it worked. Counted
+        // either way so the two can be told apart from the outside.
+        result.page.found += page.found.length;
+        result.page.missed.push(...page.missed);
         const written = await applyScrapedScores(target.id, page.found);
         result.scoresUpdated += written.updated;
         result.fromPage = (result.fromPage ?? 0) + written.updated;
