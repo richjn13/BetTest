@@ -42,6 +42,8 @@ export type SyncResult = {
   unmatched?: string[];
   /** Set when the plan refused the historical window finished games need. */
   historyRefused?: string;
+  /** Games left alone because somebody had entered their score by hand. */
+  overridden?: number;
   gamesSeen: number;
   gamesInserted: number;
   spreadsUpdated: number;
@@ -607,14 +609,23 @@ export async function refreshScores(
       }
     }
 
-    if (game.score_overridden_at) continue;
-
     const parsed = extractScores(event);
     if (!parsed) continue;
 
+    const status = event.completed ? "final" : "live";
+
+    // A hand-entered score outranks the feed -- that is what a correction is
+    // for -- but only once the game is over. A number typed in while a game
+    // was on is a snapshot, not a ruling, and honouring it forever left games
+    // corrected mid-afternoon stuck short of final for good, never graded and
+    // never touched by another run.
+    if (game.score_overridden_at && (game.status === "final" || !event.completed)) {
+      result.overridden = (result.overridden ?? 0) + 1;
+      continue;
+    }
+
     // Nothing to write when the feed is repeating what we already stored,
     // which is most of what a run every fifteen minutes sees.
-    const status = event.completed ? "final" : "live";
     if (
       game.final_home_score === parsed.home &&
       game.final_away_score === parsed.away &&
@@ -631,7 +642,6 @@ export async function refreshScores(
         status,
       })
       .eq("id", game.id)
-      .is("score_overridden_at", null)
       .select("id");
     if (!update.error && update.data && update.data.length > 0) result.scoresUpdated += 1;
   }

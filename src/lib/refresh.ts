@@ -39,6 +39,8 @@ export type RefreshResult = {
   scoresUpdated: number;
   /** How many games the scores feed answered with, matched or not. */
   eventsReturned: number | null;
+  /** Games left as they were because somebody entered their score by hand. */
+  overridden: number;
   /** Our games past kickoff that neither the page nor the feed mentioned. */
   unmatched: string[];
   graded: number | null;
@@ -88,6 +90,7 @@ export async function runRefresh(
     spreadsUpdated: 0,
     scoresUpdated: 0,
     eventsReturned: null,
+    overridden: 0,
     unmatched: [],
     page: { host: null, found: 0, missed: [] },
     graded: null,
@@ -212,6 +215,7 @@ export async function runRefresh(
     // overwriting the count here reported those as never having happened.
     result.scoresUpdated += scores.scoresUpdated;
     result.eventsReturned = scores.eventsReturned ?? null;
+    result.overridden = scores.overridden ?? 0;
     result.unmatched = scores.unmatched ?? [];
     // Not an error -- the run still worked -- but the reason a finished game
     // can never arrive, which belongs in the run's own report.

@@ -1184,9 +1184,13 @@ export async function applyScrapedScores(
 
   for (const score of scores) {
     const game = games.get(score.gameId);
-    if (!game || game.score_overridden_at) continue;
+    if (!game) continue;
 
     const status: GameStatus = score.final ? "final" : "live";
+    // The same rule the feed follows: a correction stands, unless the game is
+    // now over and ours is not. A number typed in during a game is a snapshot,
+    // and treating it as final left those games unresolved for good.
+    if (game.score_overridden_at && (game.status === "final" || !score.final)) continue;
     if (
       game.final_home_score === score.home &&
       game.final_away_score === score.away &&
@@ -1208,7 +1212,6 @@ export async function applyScrapedScores(
           status: write.status,
         })
         .eq("id", write.id)
-        .is("score_overridden_at", null)
         .select("id"),
     ),
   );
