@@ -548,6 +548,13 @@ export async function refreshScores(
     if (!game) {
       const sameTeams = byMatchup.get(matchupKey(event.away_team, event.home_team));
       if (!sameTeams) continue;
+      // Two weeks of a season can hold the same matchup, and a name alone
+      // cannot tell them apart. The kickoff can: a rematch is never two days
+      // away from the first meeting.
+      const apart = Math.abs(
+        new Date(sameTeams.kickoff_time).getTime() - new Date(event.commence_time).getTime(),
+      );
+      if (!Number.isFinite(apart) || apart > 2 * 86_400_000) continue;
       game = sameTeams;
       if (!game.odds_api_event_id) {
         const link = await db()
