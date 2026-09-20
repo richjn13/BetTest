@@ -28,6 +28,10 @@ export type RefreshResult = {
   gamesAdopted: number;
   spreadsUpdated: number;
   scoresUpdated: number;
+  /** How many games the scores feed answered with, matched or not. */
+  eventsReturned: number | null;
+  /** Our games past kickoff that neither the page nor the feed mentioned. */
+  unmatched: string[];
   graded: number | null;
 };
 
@@ -74,6 +78,8 @@ export async function runRefresh(
     gamesAdopted: 0,
     spreadsUpdated: 0,
     scoresUpdated: 0,
+    eventsReturned: null,
+    unmatched: [],
     graded: null,
   };
 
@@ -175,6 +181,8 @@ export async function runRefresh(
     // Added, not assigned: the page may already have written some, and
     // overwriting the count here reported those as never having happened.
     result.scoresUpdated += scores.scoresUpdated;
+    result.eventsReturned = scores.eventsReturned ?? null;
+    result.unmatched = scores.unmatched ?? [];
     if (scores.error) {
       result.scoresError = scores.error;
       result.degraded.push(scores.error);

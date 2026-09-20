@@ -76,6 +76,11 @@ export async function GET(request: Request): Promise<NextResponse> {
       degraded: result.degraded,
       frozen: result.frozen,
       scoresUpdated: result.scoresUpdated,
+      // What the feed actually said, so a run that writes nothing can be read.
+      // Without these a quiet afternoon and a broken match look identical.
+      eventsReturned: result.eventsReturned,
+      unmatched: result.unmatched.slice(0, 8),
+      unmatchedCount: result.unmatched.length,
       graded: result.graded,
     });
   }

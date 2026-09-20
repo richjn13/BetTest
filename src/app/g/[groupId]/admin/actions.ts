@@ -1001,11 +1001,24 @@ export async function syncScoresAction(
       },
     });
 
+    // A run that writes nothing used to say so and stop, which is the same
+    // sentence whether every score was already in or the feed never mentioned
+    // one of our games. Saying which games it did not cover tells them apart.
+    const missed =
+      result.scoresUpdated === 0 && result.unmatched.length > 0
+        ? ` The feed answered with ${result.eventsReturned ?? 0} games and said nothing ` +
+          `about ${result.unmatched.length} of ours that have kicked off: ` +
+          `${result.unmatched.slice(0, 4).join(", ")}` +
+          `${result.unmatched.length > 4 ? ", and others" : ""}. Enter those by hand ` +
+          "on the Games page."
+        : "";
+
     return (
       `${sportLabel(week.sport)} ${week.label}: ${result.scoresUpdated} score` +
       `${result.scoresUpdated === 1 ? "" : "s"} updated, ` +
       `${result.graded ?? 0} pick${result.graded === 1 ? "" : "s"} graded` +
-      `${result.frozen ? `, ${result.frozen} lines frozen at kickoff` : ""}.`
+      `${result.frozen ? `, ${result.frozen} lines frozen at kickoff` : ""}.` +
+      missed
     );
   });
 }

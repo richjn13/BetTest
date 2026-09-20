@@ -36,6 +36,10 @@ export type SyncResult = {
   kickoffsMoved?: number;
   /** Why the run degraded, if it did. The last known spread stays on screen. */
   error?: string;
+  /** How many games the feed answered with, matched or not. */
+  eventsReturned?: number;
+  /** Our games past kickoff that the feed never mentioned. */
+  unmatched?: string[];
   gamesSeen: number;
   gamesInserted: number;
   spreadsUpdated: number;
@@ -500,6 +504,8 @@ export async function refreshScores(
     id: string;
     odds_api_event_id: string | null;
     kickoff_time: string;
+    home_team: string;
+    away_team: string;
     final_home_score: number | null;
     final_away_score: number | null;
     status: string;
@@ -507,23 +513,57 @@ export async function refreshScores(
     score_overridden_at: string | null;
   };
 
+  // Every game of the live weeks, event id or not. Keying only on the event id
+  // meant a game the feed had renumbered, or one added by hand, could never be
+  // scored however many times the feed was asked -- and the run reported no
+  // error, because from its side nothing had gone wrong.
+  const rows =
+    unwrap<Row[]>(
+      await db()
+        .from("games")
+        .select(
+          "id, odds_api_event_id, kickoff_time, home_team, away_team, " +
+            "final_home_score, final_away_score, status, spread_frozen_at, " +
+            "score_overridden_at",
+        )
+        .in("week_id", liveWeeks),
+    ) ?? [];
+
   const ours = new Map<string, Row>();
-  for (const row of unwrap<Row[]>(
-    await db()
-      .from("games")
-      .select(
-        "id, odds_api_event_id, kickoff_time, final_home_score, final_away_score, " +
-          "status, spread_frozen_at, score_overridden_at",
-      )
-      .in("week_id", liveWeeks)
-      .not("odds_api_event_id", "is", null),
-  ) ?? []) {
+  const byMatchup = new Map<string, Row>();
+  for (const row of rows) {
     if (row.odds_api_event_id) ours.set(row.odds_api_event_id, row);
+    byMatchup.set(matchupKey(row.away_team, row.home_team), row);
   }
 
+  result.eventsReturned = events.length;
+  const matched = new Set<string>();
+
   for (const event of events) {
-    const game = ours.get(event.id);
-    if (!game) continue;
+    let game = ours.get(event.id);
+
+    // The same matchup by name, the way the odds pull already adopts one. The
+    // feed writes both sides exactly as it wrote them when the slate was
+    // pulled, so this is the reliable second key.
+    if (!game) {
+      const sameTeams = byMatchup.get(matchupKey(event.away_team, event.home_team));
+      if (!sameTeams) continue;
+      game = sameTeams;
+      if (!game.odds_api_event_id) {
+        const link = await db()
+          .from("games")
+          .update({ odds_api_event_id: event.id })
+          .eq("id", game.id)
+          .is("odds_api_event_id", null)
+          .select("id");
+        if (!link.error && (link.data?.length ?? 0) > 0) {
+          game.odds_api_event_id = event.id;
+          result.gamesAdopted = (result.gamesAdopted ?? 0) + 1;
+        }
+      }
+    }
+
+    matched.add(game.id);
     result.gamesSeen += 1;
 
     // Every scores response carries commence_time, so keeping kickoffs current
@@ -578,7 +618,25 @@ export async function refreshScores(
     if (!update.error && update.data && update.data.length > 0) result.scoresUpdated += 1;
   }
 
+  // Games past kickoff that the feed said nothing about. A run that writes
+  // nothing is otherwise indistinguishable from a quiet afternoon, which is
+  // how a whole Saturday of college scores went missing without one error.
+  const now = Date.now();
+  result.unmatched = rows
+    .filter(
+      (row) =>
+        !matched.has(row.id) &&
+        row.status !== "final" &&
+        new Date(row.kickoff_time).getTime() <= now,
+    )
+    .map((row) => `${row.away_team} at ${row.home_team}`);
+
   return result;
+}
+
+/** Both teams, lowercased, as the second way to recognise one of our games. */
+function matchupKey(away: string, home: string): string {
+  return `${away.trim().toLowerCase()}|${home.trim().toLowerCase()}`;
 }
 
 function describe(error: unknown): string {
