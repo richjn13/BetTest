@@ -203,7 +203,9 @@ function GameRow({
     status: game.status,
     pickedSide: selection?.side ?? null,
     isLock: selection?.isLock ?? false,
-    points: card.pick?.points_awarded === null ? null : Number(card.pick?.points_awarded),
+    // No pick at all reads as no points. Testing the field for null alone let
+    // an undefined through into Number(), which is NaN, and NaN printed.
+    points: pointsOf(card.pick),
   });
 
   // Where the pick stands while the game is still on. Deliberately not the
@@ -428,7 +430,7 @@ function TotalRow({
   const line = effectiveTotal(game);
   if (line === null) return null;
 
-  const points = totalPick?.points_awarded === null ? null : Number(totalPick?.points_awarded);
+  const points = pointsOf(totalPick);
   const combined =
     game.final_home_score !== null && game.final_away_score !== null
       ? game.final_home_score + game.final_away_score
@@ -639,4 +641,15 @@ function StatusPill({
     return <span className={`${pill} bg-[rgb(var(--lock))]/15 text-[rgb(var(--lock))]`}>Locked</span>;
   }
   return <span className={`${pill} bg-accent/10 text-accent`}>Open</span>;
+}
+
+/**
+ * What a pick scored, or null when there is no pick or no result yet.
+ *
+ * Testing the field for null alone let an undefined through -- no pick at all
+ * -- into Number(), which is NaN, and a NaN then printed as a stray score.
+ */
+function pointsOf(pick: { points_awarded: number | null } | null | undefined): number | null {
+  const raw = pick?.points_awarded;
+  return raw === null || raw === undefined ? null : Number(raw);
 }
