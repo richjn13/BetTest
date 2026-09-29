@@ -923,6 +923,8 @@ export async function applyLockedLines(
   // most of a minute on a bad connection and the sort of thing that outlasts a
   // serverless function.
   const updates: { id: string; patch: Record<string, unknown> }[] = [];
+  /** Games the pull saw but may not change: only their "last seen" moves. */
+  const touches: string[] = [];
   const inserts: Record<string, unknown>[] = [];
 
   for (const game of games) {
@@ -955,6 +957,12 @@ export async function applyLockedLines(
       new Date(match.kickoff_time).getTime() <= Date.now()
     ) {
       counts.skippedFrozen += 1;
+      // The pull did mention it, so it has not come off the slate -- it is
+      // simply past the point where its line may move. Without this, every
+      // re-pull during a game day reported the games being played as dropped
+      // and flagged them red on the games page.
+      seen.add(match.id);
+      if (!match.spread_frozen_at) touches.push(match.id);
       continue;
     }
 
@@ -1008,6 +1016,16 @@ export async function applyLockedLines(
   );
   for (const result of results) {
     if (!result.error && result.data && result.data.length > 0) counts.updated += 1;
+  }
+
+  // Not counted as updates: nothing about the game changed except the fact
+  // that the feed still lists it.
+  if (touches.length > 0) {
+    await db()
+      .from("games")
+      .update({ last_seen_in_feed_at: now })
+      .in("id", touches)
+      .select("id");
   }
 
   // Anything already in the week that this pull never mentioned has come off

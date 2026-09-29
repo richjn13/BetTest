@@ -44,6 +44,8 @@ export type SyncResult = {
   historyRefused?: string;
   /** Games left alone because somebody had entered their score by hand. */
   overridden?: number;
+  /** Past kickoff for us, but the feed is carrying no score for them yet. */
+  awaitingScore?: string[];
   gamesSeen: number;
   gamesInserted: number;
   spreadsUpdated: number;
@@ -610,7 +612,16 @@ export async function refreshScores(
     }
 
     const parsed = extractScores(event);
-    if (!parsed) continue;
+    if (!parsed) {
+      // The feed knows the game and is carrying no score for it, which is a
+      // different thing from never mentioning it: the game has not started as
+      // far as the feed is concerned. Worth saying, because a stored kickoff
+      // that is wrong looks exactly like this from the app's side.
+      if (new Date(game.kickoff_time).getTime() <= Date.now() && game.status !== "final") {
+        (result.awaitingScore ??= []).push(`${game.away_team} at ${game.home_team}`);
+      }
+      continue;
+    }
 
     const status = event.completed ? "final" : "live";
 

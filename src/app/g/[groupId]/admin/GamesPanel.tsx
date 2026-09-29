@@ -231,7 +231,7 @@ function GamesSection({
             </div>
             <div>
               <label className="label">Kickoff (your local time)</label>
-              <input name="kickoffTime" type="datetime-local" required className="field" />
+              <KickoffField name="kickoffTime" required className="field" />
             </div>
             <div>
               <label className="label">Home spread</label>
@@ -344,9 +344,8 @@ function GamesSection({
                     defaultValue={game.final_home_score ?? ""}
                     className="field py-1 text-sm"
                   />
-                  <input
+                  <KickoffField
                     name="kickoffTime"
-                    type="datetime-local"
                     aria-label="Move kickoff, leave blank to keep it"
                     className="field py-1 text-sm"
                   />
@@ -590,6 +589,48 @@ function GameDrawer({
 function Ranked({ rank }: { rank: number | null }) {
   if (rank === null) return null;
   return <span className="mr-0.5 text-xs text-accent">#{rank}</span>;
+}
+
+/**
+ * A kickoff time, entered in your zone and sent as an instant.
+ *
+ * A `datetime-local` box hands the form "2026-09-20T13:00" with no zone on it.
+ * The server then parses that in its own zone, which on Vercel is UTC, so an
+ * afternoon kickoff typed in New York was stored four hours early -- picks
+ * closed early, the line froze early, and the game showed as under way while
+ * it was still hours off.
+ *
+ * The browser knows the zone and the daylight-saving rules for the date being
+ * entered, so the conversion happens here: the visible box stays local, and a
+ * hidden field carries the instant the server stores.
+ */
+function KickoffField({
+  name,
+  className,
+  required,
+  ...rest
+}: {
+  name: string;
+  className?: string;
+  required?: boolean;
+} & React.ComponentProps<"input">) {
+  const [local, setLocal] = useState("");
+  const parsed = local ? new Date(local) : null;
+  const iso = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : "";
+
+  return (
+    <>
+      <input
+        {...rest}
+        type="datetime-local"
+        value={local}
+        required={required}
+        onChange={(event) => setLocal(event.target.value)}
+        className={className}
+      />
+      <input type="hidden" name={name} value={iso} />
+    </>
+  );
 }
 
 /**

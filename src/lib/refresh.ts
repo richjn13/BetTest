@@ -43,6 +43,8 @@ export type RefreshResult = {
   overridden: number;
   /** Our games past kickoff that neither the page nor the feed mentioned. */
   unmatched: string[];
+  /** Games the feed knows but has no score for: it does not think they began. */
+  awaitingScore: string[];
   graded: number | null;
 };
 
@@ -92,6 +94,7 @@ export async function runRefresh(
     eventsReturned: null,
     overridden: 0,
     unmatched: [],
+    awaitingScore: [],
     page: { host: null, found: 0, missed: [] },
     graded: null,
   };
@@ -216,6 +219,7 @@ export async function runRefresh(
     result.scoresUpdated += scores.scoresUpdated;
     result.eventsReturned = scores.eventsReturned ?? null;
     result.overridden = scores.overridden ?? 0;
+    result.awaitingScore = scores.awaitingScore ?? [];
     result.unmatched = scores.unmatched ?? [];
     // Not an error -- the run still worked -- but the reason a finished game
     // can never arrive, which belongs in the run's own report.

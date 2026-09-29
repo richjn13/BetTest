@@ -6,6 +6,7 @@ import { db, unwrap } from "@/lib/db";
 import { gradeResolvedGames } from "@/lib/grading";
 import { pullLinesWithClaude } from "@/lib/claude-odds";
 import { fetchPollFromWeb } from "@/lib/poll-source";
+import { parseInstant } from "@/lib/instant";
 import { parsePastedPoll } from "@/lib/rankings";
 import { pullLinesFromFeed, pullTotalsFromFeed, type Quota } from "@/lib/odds";
 import { scoresFromWeb, scoresUrl } from "@/lib/score-source";
@@ -246,8 +247,8 @@ export async function addGameAction(
     if (!homeTeam || !awayTeam) throw new AppError("Both teams are required.");
     if (homeTeam === awayTeam) throw new AppError("A team can't play itself.");
 
-    const kickoffDate = new Date(kickoff);
-    if (Number.isNaN(kickoffDate.getTime())) throw new AppError("Enter a valid kickoff time.");
+    const kickoffDate = parseInstant(kickoff);
+    if (!kickoffDate) throw new AppError("Enter a valid kickoff time.");
 
     const week = await ensureWeek(seasonYear, weekNumber, sport);
     const game = await createGame({
@@ -325,8 +326,8 @@ export async function overrideGameAction(
     // settled against it.
     let kickoffIso: string | null = null;
     if (kickoff) {
-      const parsed = new Date(kickoff);
-      if (Number.isNaN(parsed.getTime())) throw new AppError("Enter a valid kickoff time.");
+      const parsed = parseInstant(kickoff);
+      if (!parsed) throw new AppError("Enter a valid kickoff time.");
       if (game.spread_frozen_at) {
         throw new AppError("This game's line is already frozen, so its kickoff cannot move.");
       }
@@ -1013,12 +1014,22 @@ export async function syncScoresAction(
           "on the Games page."
         : "";
 
+    // Matched, but the feed is carrying no score: it does not believe these
+    // games have begun. Almost always a stored kickoff that is wrong.
+    const early =
+      result.awaitingScore.length > 0
+        ? ` ${result.awaitingScore.length} game${result.awaitingScore.length === 1 ? " is" : "s are"}` +
+          ` past kickoff here but not yet under way as far as the feed is concerned: ` +
+          `${result.awaitingScore.slice(0, 4).join(", ")}. Check their kickoff times.`
+        : "";
+
     return (
       `${sportLabel(week.sport)} ${week.label}: ${result.scoresUpdated} score` +
       `${result.scoresUpdated === 1 ? "" : "s"} updated, ` +
       `${result.graded ?? 0} pick${result.graded === 1 ? "" : "s"} graded` +
       `${result.frozen ? `, ${result.frozen} lines frozen at kickoff` : ""}.` +
-      missed
+      missed +
+      early
     );
   });
 }
